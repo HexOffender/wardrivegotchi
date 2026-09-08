@@ -1,5 +1,6 @@
 """WiFi scanner — active (iw scan) and passive (raw beacon capture) modes."""
 
+import os
 import re
 import struct
 import subprocess
@@ -7,6 +8,36 @@ import threading
 import time
 import queue
 from beacon_parser import parse_radiotap_and_beacon
+
+# (1) Filter in tcpdump, not in Python. Only management beacon and probe-response
+# frames carry AP info, so drop everything else in-kernel instead of shipping
+# every data/control frame up the pipe - on a busy channel that is the
+# difference between keeping up and dropping beacons. Snaplen keeps only the
+# front of each frame (radiotap + header + the SSID/RSN/DS IEs). Some tcpdump
+# builds or capture DLTs reject the 802.11 BPF primitives; PassiveScanner drops
+# the filter and retries unfiltered if so, so scanning still works everywhere.
+BEACON_FILTER = 'type mgt subtype beacon or type mgt subtype probe-resp'
+SNAPLEN = 512
+
+
+def detect_second_monitor(primary, base='/sys/class/net'):
+    """Find a monitor-mode interface other than `primary` - e.g. a USB adapter
+    that came up as wlan2mon - so a plugged-in radio is used automatically with
+    no configuration. Returns its name, or '' if there is none. A radiotap
+    monitor interface has sysfs type 803 (ARPHRD_IEEE80211_RADIOTAP)."""
+    try:
+        for name in sorted(os.listdir(base)):
+            if name == primary:
+                continue
+            try:
+                with open('%s/%s/type' % (base, name)) as f:
+                    if f.read().strip() == '803':
+                        return name
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return ''
 
 
 class Scanner(threading.Thread):
@@ -53,15 +84,21 @@ class Scanner(threading.Thread):
 class PassiveScanner(threading.Thread):
     """Passive scanner using tcpdump on a monitor interface with channel hopping."""
 
-    def __init__(self, interface, channels, hop_interval, output_queue, stop_event):
+    def __init__(self, interface, channels, hop_interval, output_queue, stop_event,
+                 priority=None, priority_weight=2):
         super().__init__(daemon=True)
         self.interface = interface
         self.channels = channels
-        self.hop_interval = hop_interval  # seconds per channel
+        self.hop_interval = hop_interval  # seconds dwell per channel
+        # (2) A prioritised hop order: the channels most APs sit on get visited
+        # more often than the rest, so a sweep spends its time where the
+        # networks are. See _build_hop_order.
+        self.hop_order = _build_hop_order(channels, set(priority or ()), priority_weight)
         self.output_queue = output_queue
         self.stop_event = stop_event
         self.current_channel = 0
         self._tcpdump = None
+        self._use_filter = True  # dropped automatically if this tcpdump rejects it
         self._seen_aps = {}  # bssid -> ap dict (running state)
 
     def run(self):
@@ -79,11 +116,12 @@ class PassiveScanner(threading.Thread):
                 time.sleep(1)
 
     def _hop_channels(self):
-        """Hop through channels on the monitor interface."""
+        """Hop through the prioritised channel order on the monitor interface."""
+        order = self.hop_order or self.channels
         idx = 0
         while not self.stop_event.is_set():
-            if self.channels:
-                ch = self.channels[idx % len(self.channels)]
+            if order:
+                ch = order[idx % len(order)]
                 try:
                     subprocess.run(
                         ['iw', 'dev', self.interface, 'set', 'channel', str(ch)],
@@ -95,18 +133,30 @@ class PassiveScanner(threading.Thread):
                 idx += 1
             self.stop_event.wait(self.hop_interval)
 
+    def _tcpdump_args(self):
+        args = ['tcpdump', '-i', self.interface, '-s', str(SNAPLEN),
+                '-w', '-', '-U', '--immediate-mode']
+        if self._use_filter:
+            args.append(BEACON_FILTER)
+        return args
+
     def _capture_beacons(self):
         """Capture raw beacon frames using tcpdump binary output and parse IEs."""
         # Raw pcap to stdout — we parse the binary frames for accurate encryption
         self._tcpdump = subprocess.Popen(
-            ['tcpdump', '-i', self.interface, '-w', '-', '-U', '--immediate-mode'],
+            self._tcpdump_args(),
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
         )
         batch_time = time.time()
         try:
-            # Read pcap global header (24 bytes)
+            # tcpdump writes the 24-byte pcap global header as soon as it starts,
+            # even before any packet, so a short read means it failed to start.
             header = self._tcpdump.stdout.read(24)
             if len(header) < 24:
+                # A tcpdump build/DLT that rejects the beacon BPF filter dies at
+                # once. Drop the filter so the next pass captures unfiltered.
+                if self._use_filter:
+                    self._use_filter = False
                 return
 
             while not self.stop_event.is_set():
@@ -156,6 +206,26 @@ class PassiveScanner(threading.Thread):
 # ---------------------------------------------------------------------------
 # Shared parsing for iw scan output
 # ---------------------------------------------------------------------------
+
+def _build_hop_order(channels, priority_set, weight):
+    """Build the channel hop sequence. Channels in priority_set are interleaved
+    `weight` times (round-robin) before each non-priority channel, so the busy
+    channels (2.4 GHz 1/6/11, common 5 GHz) get far more airtime while the rest
+    are still sampled. Returns the plain list when there is nothing to weight."""
+    channels = list(channels)
+    pri = [c for c in channels if c in priority_set]
+    sec = [c for c in channels if c not in priority_set]
+    if not pri or not sec or weight <= 0:
+        return channels
+    order = []
+    pi = 0
+    for s in sec:
+        for _ in range(weight):
+            order.append(pri[pi % len(pri)])
+            pi += 1
+        order.append(s)
+    return order
+
 
 def parse_iw_scan(output):
     """Parse iw scan output into AP dicts."""

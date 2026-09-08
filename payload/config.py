@@ -47,6 +47,12 @@ CHANNELS_2_4 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 CHANNELS_5 = [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165]
 CHANNELS_6 = [1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61, 65, 69, 73, 77, 81, 85, 89, 93]
 
+# The channels most access points sit on: 2.4 GHz 1/6/11 (the non-overlapping
+# ones) and the common 5 GHz channels. The passive scanner dwells on these more
+# than the rest (scanner._build_hop_order), so a sweep spends its time where the
+# networks are. Only those also enabled for the scan are used.
+PRIORITY_CHANNELS = [1, 6, 11, 36, 40, 44, 48, 149, 153, 157, 161]
+
 # Bundled phone GPS server (mobile2gps). It serves an HTTPS page the phone
 # opens; the browser's location becomes NMEA and is fed to gpsd, so no GPS
 # hardware is needed. HTTPS is not optional here - the Geolocation API refuses
@@ -65,10 +71,17 @@ DEFAULTS = {
     'scan_5ghz': True,
     'scan_6ghz': False,
     'scan_mode': 'stealth',  # 'stealth' (passive, all bands) or 'active' (iw scan, 2.4GHz only w/o dongle)
-    'hop_speed': 0.5,  # seconds per channel in stealth mode
+    'hop_speed': 0.3,  # seconds dwelt per channel in stealth mode (lower sweeps faster)
+    'hop_priority_weight': 2,  # extra visits to the busy channels per other channel
     'capture_enabled': False,
     'scan_interface': 'wlan0',
     'capture_interface': 'wlan1mon',
+    # Second monitor-mode radio for parallel 5 GHz scanning (e.g. a USB adapter
+    # as wlan2mon). Leave EMPTY to auto-detect it: if a second monitor interface
+    # is present, the internal radio scans 2.4 GHz and the second scans 5 GHz in
+    # parallel; with none present, the internal radio scans alone. Set a name to
+    # force a specific interface. Ignored in active scan mode.
+    'capture_interface_5ghz': '',
     'wigle_api_name': '',
     'wigle_api_token': '',
     'scan_interval': 5,

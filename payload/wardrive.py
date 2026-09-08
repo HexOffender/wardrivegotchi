@@ -18,9 +18,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from pagerctl import Pager
 from config import (load_config, save_config, ensure_dirs, DB_PATH, EXPORT_DIR,
-                    CHANNELS_2_4, CHANNELS_5, CHANNELS_6)
+                    CHANNELS_2_4, CHANNELS_5, CHANNELS_6, PRIORITY_CHANNELS)
 from database import Database
-from scanner import Scanner, PassiveScanner
+from scanner import Scanner, PassiveScanner, detect_second_monitor
 from gps_module import GpsReader, GpsState
 from capture import Capture
 from dashboard import Dashboard
@@ -75,7 +75,7 @@ class Wardrive:
         self.capture_queue = queue.Queue()
 
         # Threads (created on start)
-        self.scanner = None
+        self.scanners = []
         self.gps_reader = None
         self.capture_thread = None
 
@@ -129,27 +129,63 @@ class Wardrive:
             channels.extend(CHANNELS_6)
         return channels or CHANNELS_2_4
 
+    def _band_channels(self, two_four=False, five=False, six=False):
+        """Channels for the requested bands (only those enabled in settings)."""
+        chans = []
+        if two_four and self.config['scan_2_4ghz']:
+            chans.extend(CHANNELS_2_4)
+        if five and self.config['scan_5ghz']:
+            chans.extend(CHANNELS_5)
+        if six and self.config['scan_6ghz']:
+            chans.extend(CHANNELS_6)
+        return chans
+
+    def _add_passive(self, interface, channels):
+        """Queue a passive scanner on one monitor interface."""
+        self.scanners.append(PassiveScanner(
+            interface, channels,
+            self.config.get('hop_speed', 0.3),
+            self.scan_queue, self.stop_event,
+            priority=PRIORITY_CHANNELS,
+            priority_weight=self.config.get('hop_priority_weight', 2),
+        ))
+
+    def _start_passive_scanners(self):
+        """Build the passive scanner(s). With a second monitor radio present, the
+        internal radio scans 2.4 GHz (and 6 GHz if enabled) while the second one
+        scans 5 GHz, in parallel - both feed the same queue and the database
+        de-dupes by BSSID. Falls back to one radio when the second is not
+        configured or not plugged in."""
+        mon = self.config['capture_interface']
+        # Use the configured second radio, or auto-detect one (a USB adapter in
+        # monitor mode, e.g. wlan2mon). No configuration needed: plug it in and
+        # it is used; with none present, scanning uses the internal radio alone.
+        mon5 = self.config.get('capture_interface_5ghz', '') or detect_second_monitor(mon)
+        have_mon5 = bool(mon5) and os.path.exists('/sys/class/net/' + mon5)
+        if have_mon5 and self.config['scan_5ghz'] and CHANNELS_5:
+            self._add_passive(mon, self._band_channels(two_four=True, six=True)
+                              or list(CHANNELS_2_4))
+            self._add_passive(mon5, list(CHANNELS_5))
+        else:
+            self._add_passive(mon, self._get_channels())
+
     def _start_threads(self):
         """Start scanner, GPS, and capture threads."""
-        # Scanner — active uses managed interface, stealth uses monitor
-        channels = self._get_channels()
+        # Scanner(s). Active mode uses the managed interface; stealth uses the
+        # monitor radio(s) - two in parallel when a second one is configured.
+        self.scanners = []
         if self.config.get('scan_mode', 'active') == 'stealth':
-            self.scanner = PassiveScanner(
-                self.config['capture_interface'],  # monitor interface for passive
-                channels,
-                self.config.get('hop_speed', 0.5),
-                self.scan_queue,
-                self.stop_event
-            )
+            self._start_passive_scanners()
         else:
-            self.scanner = Scanner(
+            self.scanners.append(Scanner(
                 self.config['scan_interface'],
-                channels,
+                self._get_channels(),
                 self.config['scan_interval'],
                 self.scan_queue,
-                self.stop_event
-            )
-        self.scanner.start()
+                self.stop_event,
+            ))
+        for scanner in self.scanners:
+            scanner.start()
 
         # GPS — with the phone server the device is a pty it owns, so there is
         # nothing to detect. Serial mode still auto-detects a USB receiver.
@@ -184,8 +220,8 @@ class Wardrive:
     def _stop_threads(self):
         """Stop all background threads."""
         self.stop_event.set()
-        if self.scanner:
-            self.scanner.join(timeout=3)
+        for scanner in self.scanners:
+            scanner.join(timeout=3)
         if self.gps_reader:
             self.gps_reader.stop()
             self.gps_reader.join(timeout=3)
@@ -332,7 +368,7 @@ class Wardrive:
 
     # The battery level changes slowly, thus a frame does not need a fresh
     # reading. Before this, every frame read sysfs, and a device without that
-    # entry ran ubus through subprocess with a two second timeout on each frame.
+    # entry ran ubus through subprocess with a two-second timeout on each frame.
     _BATTERY_INTERVAL = 30.0
 
     def _get_battery(self):

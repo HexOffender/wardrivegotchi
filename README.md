@@ -248,6 +248,9 @@ file at the first start.
 | `gps_source` | `phone` | `phone` uses the GPS server. `serial` uses a USB or serial receiver. |
 | `scan_mode` | `stealth` | `stealth` is a passive scan. `active` uses `iw scan`. |
 | `scan_5ghz` | `true` | Adds the 5 GHz channels to the scan. |
+| `hop_speed` | `0.3` | Stealth mode: seconds dwelt on each channel before hopping. Lower sweeps faster (more coverage while moving); too low starts missing beacons. |
+| `hop_priority_weight` | `2` | Stealth mode: extra visits the busy channels (2.4 GHz 1/6/11 and the common 5 GHz ones) get between each other channel, so a sweep favours where the access points are. |
+| `capture_interface_5ghz` | `""` (auto) | Second monitor radio for parallel 5 GHz (e.g. a USB adapter as `wlan2mon`). Empty **auto-detects** it: a plugged-in second monitor radio is used automatically (2.4 GHz on the internal, 5 GHz on the adapter); with none, the internal radio scans alone. Set a name to force one. Ignored in active mode. |
 | `control_token` | `""` | The shared key for the phone control. Empty turns the control off. |
 | `phone_dashboard` | `false` | In serial GPS mode, run the phone server as a dashboard only. |
 | `gps_stale_secs` | `8` | If no new position arrives in this many seconds, the fix is treated as lost, so access points are not tagged against a frozen position. |
