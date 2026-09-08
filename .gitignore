@@ -1,0 +1,21 @@
+# Built binary - GPL source is in gps-server/, build it with `make -C gps-server build`
+gps-server/mobile2gps
+payload/mobile2gps/
+
+# Fetched from upstream by install.sh, not redistributed here
+payload/lib/
+payload/fonts/
+
+# Runtime
+payload/settings.json
+__pycache__/
+*.pyc
+cert.pem
+key.pem
+
+# Local build artifacts and kept-aside snapshots (prebuilt binary, git bundle,
+# a local settings.json with keys). Not part of the repo.
+/dist/
+
+# JetBrains IDE
+.idea/

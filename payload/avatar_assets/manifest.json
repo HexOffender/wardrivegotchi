@@ -1,0 +1,110 @@
+{
+  "canvas": [
+    64,
+    84
+  ],
+  "zorder": [
+    "side",
+    "feet",
+    "neck",
+    "head",
+    "eyes"
+  ],
+  "slots": {
+    "jester": "head",
+    "hardhat": "head",
+    "fedora": "head",
+    "round_glasses": "eyes",
+    "square_glasses": "eyes",
+    "eyepatch_l": "eyes",
+    "eyepatch_r": "eyes",
+    "sunglasses": "eyes",
+    "tie": "neck",
+    "goldchain": "neck",
+    "lanyard": "neck",
+    "pager": "side",
+    "flipper": "side",
+    "coffee": "side",
+    "cane": "side",
+    "sword": "side",
+    "clownshoes": "feet",
+    "skateboard": "feet",
+    "fish": "feet"
+  },
+  "slot_box": {
+    "head": [
+      4,
+      0,
+      59,
+      19
+    ],
+    "eyes": [
+      18,
+      20,
+      45,
+      27
+    ],
+    "neck": [
+      20,
+      30,
+      43,
+      46
+    ],
+    "side": [
+      0,
+      22,
+      17,
+      78
+    ],
+    "feet": [
+      18,
+      70,
+      55,
+      83
+    ]
+  },
+  "names": {
+    "jester": "Jester Cap",
+    "hardhat": "Hard Hat",
+    "fedora": "Fedora",
+    "round_glasses": "Round Glasses",
+    "square_glasses": "Square Glasses",
+    "eyepatch_l": "Eye Patch (L)",
+    "eyepatch_r": "Eye Patch (R)",
+    "sunglasses": "Sunglasses",
+    "tie": "Tie",
+    "goldchain": "Gold Chain",
+    "lanyard": "Lanyard + Badge",
+    "pager": "Pineapple Pager",
+    "flipper": "Flipper Zero",
+    "coffee": "Cup of Coffee",
+    "cane": "Walking Cane",
+    "sword": "Samurai Sword",
+    "clownshoes": "Clown Shoes",
+    "skateboard": "Skateboard",
+    "fish": "Fresh Catch"
+  },
+  "layers": [
+    "base",
+    "jester",
+    "hardhat",
+    "fedora",
+    "round_glasses",
+    "square_glasses",
+    "eyepatch_l",
+    "eyepatch_r",
+    "sunglasses",
+    "tie",
+    "goldchain",
+    "lanyard",
+    "pager",
+    "flipper",
+    "coffee",
+    "cane",
+    "sword",
+    "clownshoes",
+    "skateboard",
+    "fish"
+  ],
+  "note": "Transparent full-canvas PNG layers. Drop art into highres/ and lowres/ using these names to reskin; keep the transparency and the registration. No code change needed."
+}

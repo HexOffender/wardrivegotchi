@@ -1,0 +1,15 @@
+# This project is developed on Windows but deploys to a Linux/OpenWrt device
+# (the WiFi Pineapple Pager). Keep LF line endings everywhere so the shell
+# scripts and Python run there correctly, whatever anyone's core.autocrlf is.
+* text=auto eol=lf
+
+# Windows-only helper keeps CRLF.
+*.ps1 text eol=crlf
+
+# Binary files: never touch line endings.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ttf binary
+*.TTF binary
+*.bundle binary

@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Wardrivegotchi</title>
+<style>
+/* Neo-brutalist theme, carried over from the SinglesHandler inventory tracker:
+   one ink colour doing both text and border, a hard offset block instead of a
+   soft shadow, square corners, and a single yellow accent.
+
+   No webfonts are linked on purpose. The Pager's Management AP has no route to
+   the internet, so a Google Fonts request would hang and then fall back anyway.
+   The stack below resolves to the phone's system face, which on iOS is a good
+   enough stand-in for Archivo at these sizes. */
+:root {
+  --paper: #f5f0e6;
+  --surface: #ffffff;
+  --surface-sunken: #faf7ef;
+
+  /* Ink is body text AND every border. One value doing both is what makes the
+     style cohere: the border is not a divider, it is the same mark as the text. */
+  --ink: #111111;
+  --ink-muted: #57504a;
+
+  /* A solid rectangle with no blur, not a shadow in the optical sense. */
+  --shadow: #111111;
+
+  --brand-primary: #ffc107;
+  --brand-secondary: #e0ac00;
+  --ok: #5fd68b;
+  --bad: #ff7a6b;
+  --notice: #e7e2d6;
+  --on-accent: #111111;
+  --bad-ink: #9e2617;
+
+  --edge-w: 2px;
+  --edge-w-strong: 3px;
+  --shadow-off: 4px;
+  --shadow-off-sm: 2px;
+  --radius: 0;
+
+  --sp-2: .5rem;
+  --sp-3: .75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.25rem;
+  --sp-6: 2rem;
+
+  --font-display: Archivo, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-body: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Wardriving happens at night as often as not, and a white phone screen in a
+   dark car is genuinely unpleasant. Same marks, inverted ground - the offset
+   block goes lighter than the page so it stays visible. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #141210;
+    --surface: #201c1a;
+    --surface-sunken: #191614;
+    --ink: #f2ede3;
+    --ink-muted: #b9b1a6;
+    --shadow: #756b62;
+    --brand-primary: #ffc107;
+    --brand-secondary: #ffd24a;
+    --ok: #4fc97e;
+    --bad: #f06a5b;
+    --notice: #2c2724;
+    --bad-ink: #ff9d90;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: var(--sp-4);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+}
+
+.container {
+  max-width: 560px;
+  margin: 0 auto;
+}
+
+/* Was a CRT scanline; now the accent rule across the top of the page. */
+.scanline {
+  height: 10px;
+  background: var(--brand-primary);
+  border: var(--edge-w) solid var(--ink);
+  margin-bottom: var(--sp-5);
+}
+
+.header { margin-bottom: var(--sp-5); }
+
+.header h1 {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(2rem, 9vw, 3rem);
+  line-height: 1;
+  letter-spacing: -.02em;
+  text-transform: uppercase;
+  margin: 0;
+  display: inline-block;
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--brand-primary);
+  color: var(--on-accent);
+  border: var(--edge-w-strong) solid var(--ink);
+  box-shadow: var(--shadow-off) var(--shadow-off) 0 var(--shadow);
+}
+
+.subtitle {
+  margin-top: var(--sp-3);
+  font-size: .85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-muted);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+
+.btn {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: var(--sp-4) var(--sp-3);
+  /* --ink, not --on-accent. --on-accent is the text colour for an accent FILL
+     and stays near-black in dark mode by design; on a surface-filled button it
+     would put black text on a near-black ground (1.12:1). The active state
+     below fills with the accent, and takes --on-accent there. */
+  color: var(--ink);
+  background: var(--surface);
+  border: var(--edge-w-strong) solid var(--ink);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-off) var(--shadow-off) 0 var(--shadow);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .05s, box-shadow .05s;
+}
+
+/* The press: the button moves onto its own shadow rather than dimming. */
+.btn:active {
+  transform: translate(var(--shadow-off), var(--shadow-off));
+  box-shadow: 0 0 0 var(--shadow);
+}
+
+.btn.active {
+  background: var(--brand-primary);
+  color: var(--on-accent);
+}
+
+.data-grid {
+  background: var(--surface);
+  border: var(--edge-w-strong) solid var(--ink);
+  box-shadow: var(--shadow-off) var(--shadow-off) 0 var(--shadow);
+  margin-bottom: var(--sp-5);
+}
+
+.data-row {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: var(--edge-w) solid var(--ink);
+}
+
+.data-row:last-child { border-bottom: 0; }
+.data-row:nth-child(even) { background: var(--surface-sunken); }
+
+.data-label {
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--ink-muted);
+}
+
+.data-value {
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 700;
+  word-break: break-all;
+}
+
+/* Accuracy past the threshold: the server sends these as void, so the page has
+   to say so rather than showing a number that looks like a working fix. */
+.data-value.invalid {
+  background: var(--bad);
+  color: var(--on-accent);
+  padding: 0 var(--sp-2);
+  border: var(--edge-w) solid var(--ink);
+}
+
+.tips {
+  background: var(--notice);
+  border: var(--edge-w) solid var(--ink);
+  box-shadow: var(--shadow-off-sm) var(--shadow-off-sm) 0 var(--shadow);
+  padding: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.tips-title {
+  font-family: var(--font-display);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-size: .8rem;
+  margin-bottom: var(--sp-2);
+}
+
+.tips ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: .9rem;
+}
+
+.tips li { margin-bottom: var(--sp-2); }
+.tips li:last-child { margin-bottom: 0; }
+
+/* Profile panel. Hidden until the status feed carries player data. */
+.profile { display: none; margin-bottom: var(--sp-5); }
+.profile.on { display: block; }
+
+.profile-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.level-badge {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  color: var(--on-accent);
+  background: var(--brand-primary);
+  border: var(--edge-w-strong) solid var(--ink);
+  box-shadow: var(--shadow-off-sm) var(--shadow-off-sm) 0 var(--shadow);
+  padding: var(--sp-2) var(--sp-3);
+  white-space: nowrap;
+}
+.credits {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+/* Experience bar: a hard-edged fill on a bordered track, no rounding. */
+.xpbar {
+  position: relative;
+  height: 20px;
+  background: var(--surface);
+  border: var(--edge-w) solid var(--ink);
+  margin-bottom: var(--sp-4);
+  overflow: hidden;
+}
+.xpbar-fill { height: 100%; background: var(--brand-primary); width: 0; }
+.xpbar-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: .72rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.stat-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+.stat-chip {
+  background: var(--surface);
+  border: var(--edge-w) solid var(--ink);
+  padding: var(--sp-2);
+  text-align: center;
+}
+.stat-chip .n {
+  display: block;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.stat-chip .k {
+  display: block;
+  font-size: .6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--ink-muted);
+}
+
+.section-label {
+  font-family: var(--font-display);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  font-size: .75rem;
+  margin-bottom: var(--sp-2);
+}
+
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  background: var(--surface);
+  border: var(--edge-w) solid var(--ink);
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-2);
+}
+.shop-item .name { font-weight: 700; font-size: .9rem; }
+.shop-item .desc { font-size: .7rem; color: var(--ink-muted); }
+.shop-item .buy {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: .75rem;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--on-accent);
+  background: var(--brand-primary);
+  border: var(--edge-w) solid var(--ink);
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.shop-item .buy[disabled] { background: var(--surface); color: var(--ink-muted); opacity: .5; cursor: default; }
+.shop-item.owned { background: var(--notice); }
+.shop-item .tag {
+  margin-left: auto;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: .7rem;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Shop header (tap to collapse) and the slot-type filter chips. */
+.shop-bar { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+.shop-caret { margin-left: auto; font-size: .8rem; color: var(--ink-muted); }
+.shop-filters { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.shop-filter {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--ink);
+  background: var(--surface);
+  border: var(--edge-w) solid var(--ink);
+  padding: var(--sp-1, .3rem) var(--sp-2);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.shop-filter.on { color: var(--on-accent); background: var(--brand-primary); }
+.shop-empty { font-family: var(--font-mono); font-size: .8rem; color: var(--ink-muted); padding: var(--sp-2) 0; }
+
+/* Radar (relative AP plot) and the searchable network list. */
+.datasec { display: none; margin-bottom: var(--sp-5); }
+.datasec.on { display: block; }
+.sec-bar { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; margin-bottom: var(--sp-3); }
+.sec-caret { margin-left: auto; font-size: .8rem; color: var(--ink-muted); }
+.radar-wrap { width: 100%; max-width: 320px; margin: 0 auto; }
+.radar-wrap canvas { width: 100%; height: auto; display: block; border: var(--edge-w) solid var(--ink); background: var(--surface-sunken); box-shadow: var(--shadow-off) var(--shadow-off) 0 var(--shadow); }
+.radar-legend { display: flex; flex-wrap: wrap; gap: var(--sp-3); justify-content: center; margin-top: var(--sp-2); font-size: .7rem; color: var(--ink-muted); }
+.radar-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.radar-legend i { width: 10px; height: 10px; display: inline-block; border: 1px solid var(--ink); }
+.ap-controls { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.ap-controls input, .ap-controls select { font-family: var(--font-mono); font-size: .8rem; padding: var(--sp-2); border: var(--edge-w) solid var(--ink); background: var(--surface); color: var(--ink); }
+.ap-controls input { flex: 1; min-width: 120px; }
+.ap-row { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) 0; border-bottom: 1px solid var(--notice); font-size: .8rem; }
+.ap-row .ssid { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-row .bssid { font-family: var(--font-mono); font-size: .65rem; color: var(--ink-muted); }
+.ap-row .meta { font-family: var(--font-mono); font-size: .7rem; color: var(--ink-muted); white-space: nowrap; }
+.ap-enc { font-family: var(--font-display); font-weight: 900; font-size: .6rem; text-transform: uppercase; padding: 1px 5px; border: 1px solid var(--ink); white-space: nowrap; }
+.enc-open { background: #e5484d; color: #fff; }
+.enc-wep { background: #d29922; color: #111; }
+.enc-wpa { background: var(--notice); color: var(--ink); }
+.enc-wpa3 { background: #46a758; color: #fff; }
+.ap-hs { color: #46a758; font-weight: 900; }
+.ap-empty { font-family: var(--font-mono); font-size: .8rem; color: var(--ink-muted); padding: var(--sp-2) 0; }
+
+.inv-line { font-family: var(--font-mono); font-size: .8rem; margin-bottom: var(--sp-4); word-break: break-word; }
+
+/* Avatar: transparent PNG layers stacked in z-order, pixels kept crisp. */
+.avatar {
+  position: relative;
+  width: 160px;
+  height: 210px;   /* 160 * 84/64, the avatar canvas aspect ratio */
+  margin: 0 auto var(--sp-4);
+  border: var(--edge-w-strong) solid var(--ink);
+  box-shadow: var(--shadow-off) var(--shadow-off) 0 var(--shadow);
+  background: var(--surface);
+}
+.avatar img {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+@media (max-width: 380px) {
+  .controls { grid-template-columns: 1fr; }
+  .data-row { grid-template-columns: 1fr; gap: 0; }
+}
+/* Control panel. Hidden until the page confirms the server has a payload behind
+   it, so the standalone GPS server shows nothing extra. */
+.control { display: none; margin-bottom: var(--sp-5); }
+.control.on { display: block; }
+
+.control-status {
+  background: var(--surface);
+  border: var(--edge-w-strong) solid var(--ink);
+  box-shadow: var(--shadow-off) var(--shadow-off) 0 var(--shadow);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: .95rem;
+  font-weight: 700;
+}
+
+.control-state {
+  font-family: var(--font-display);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  display: inline-block;
+  padding: 0 var(--sp-2);
+  border: var(--edge-w) solid var(--ink);
+  background: var(--notice);
+}
+.control-state.scanning { background: var(--ok); }
+.control-state.paused { background: var(--brand-primary); }
+
+.control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); }
+
+.ctl-btn {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: .95rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: var(--sp-3) var(--sp-2);
+  color: var(--on-accent);
+  background: var(--surface);
+  border: var(--edge-w-strong) solid var(--ink);
+  box-shadow: var(--shadow-off-sm) var(--shadow-off-sm) 0 var(--shadow);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ctl-btn:active {
+  transform: translate(var(--shadow-off-sm), var(--shadow-off-sm));
+  box-shadow: 0 0 0 var(--shadow);
+}
+.ctl-btn.primary { background: var(--brand-primary); }
+.ctl-btn[disabled] { opacity: .4; cursor: default; }
+.ctl-btn.wide { grid-column: 1 / -1; }
+
+.ctl-field {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-bottom: var(--sp-3);
+}
+.ctl-field label {
+  font-size: .72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--ink-muted);
+}
+.ctl-field input {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  padding: var(--sp-2);
+  color: var(--ink);
+  background: var(--surface);
+  border: var(--edge-w) solid var(--ink);
+  border-radius: 0;
+}
+
+.ctl-bands { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+.ctl-band {
+  flex: 1;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: .85rem;
+  padding: var(--sp-2);
+  text-align: center;
+  color: var(--ink);
+  background: var(--surface);
+  border: var(--edge-w) solid var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ctl-band.on { background: var(--brand-primary); color: var(--on-accent); }
+
+.ctl-msg {
+  margin-top: var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: .8rem;
+  color: var(--ink-muted);
+  min-height: 1em;
+  word-break: break-word;
+}
+</style>
+<script>
+  const iDelay = 1000;
+  const iTimeoutDelay = 2500;
+
+  let bLoop = false;
+  let idInterval = 0;
+  let bInRequest = false;
+  let arrayUpdates = [];
+  let bSendPending = false;
+  let timeLast = null;
+  let bFindingLocation = false;
+  let idTimeout = 0;
+  let reqCurrent = null;
+  let arrayUpdatesOnLine = [];
+
+  const vLat = {name: "Lat"};
+  const vLon = {name: "Lon"};
+  const vAcc = {name: "Acc"};
+  const vTime = {name: "Time"};
+
+  function urlEncodeDict(dict) {
+    let result = "";
+    for (let i = 0; i < dict.length; i++) {
+    if (i > 0) result += "&";
+    result += encodeURIComponent(dict[i].name) + "=" + encodeURIComponent(dict[i].value);
+  }
+  return result;
+}
+
+function endRequest(bPurge) {
+  if (idTimeout !== 0) {
+    clearTimeout(idTimeout);
+    idTimeout = 0;
+  }
+  bInRequest = false;
+  if (reqCurrent != null) {
+    reqCurrent.onreadystatechange = null;
+    reqCurrent = null;
+  }
+  if (bPurge === true) {
+    arrayUpdatesOnLine = [];
+    document.getElementById("idPending").innerHTML = "—";
+  }
+}
+
+function processReqChange(req) {
+  if (req !== reqCurrent) return;
+  if (req.status === 200) {
+    if (req.readyState === 4) {
+      document.getElementById("idResponse").innerHTML = "OK";
+      endRequest(true);
+      if (bSendPending) sendUpdates();
+    } else if (req.readyState !== 2) {
+      document.getElementById("idResponse").innerHTML = "...";
+    }
+  } else {
+    document.getElementById("idResponse").innerHTML = "ERR";
+    endRequest();
+  }
+}
+
+function updateTimeout() {
+  if (reqCurrent == null) return;
+  arrayUpdates = arrayUpdatesOnLine.concat(arrayUpdates);
+  endRequest(true);
+  document.getElementById("idResponse").innerHTML = "TIMEOUT";
+  document.getElementById("idPending").innerHTML = arrayUpdates.length + ' <a href="javascript:clearPending();">[clear]</a>';
+}
+
+function clearPending() {
+  arrayUpdatesOnLine = [];
+  arrayUpdates = [];
+  document.getElementById("idPending").innerHTML = "—";
+}
+
+function foundLocation(position) {
+  document.getElementById("idLat").innerHTML = position.coords.latitude.toFixed(6);
+  document.getElementById("idLon").innerHTML = position.coords.longitude.toFixed(6);
+
+  const accEl = document.getElementById("idAcc");
+  let accText = position.coords.accuracy.toFixed(1) + "m";
+  if (position.coords.accuracy > 100) {
+    accText += " (INVALID)";
+    accEl.classList.add("invalid");
+  } else {
+    accEl.classList.remove("invalid");
+  }
+  accEl.innerHTML = accText;
+  
+  if (timeLast !== position.timestamp) {
+    timeLast = position.timestamp;
+    const d = new Date(position.timestamp);
+    document.getElementById("idTime").innerHTML = d.toLocaleTimeString();
+    
+    vLat.value = position.coords.latitude;
+    vLon.value = position.coords.longitude;
+    vAcc.value = position.coords.accuracy;
+    vTime.value = position.timestamp;
+
+    const formVars = [vLat, vLon, vAcc, vTime];
+    const strForm = urlEncodeDict(formVars);
+    arrayUpdates.push(strForm);
+    document.getElementById("idPending").innerHTML = (arrayUpdates.length + arrayUpdatesOnLine.length) + ' <a href="javascript:clearPending();">[clear]</a>';
+    sendUpdates();
+  }
+  
+  bFindingLocation = false;
+  if (bLoop) {
+    idInterval = setTimeout(findLocation, iDelay);
+  } else {
+    idInterval = 0;
+  }
+}
+
+function sendUpdates() {
+  if (bInRequest) {
+    bSendPending = true;
+    return;
+  }
+  if (arrayUpdates.length === 0) return;
+  
+  bInRequest = true;
+  const req = new XMLHttpRequest();
+  const reqURL = window.location.toString();
+  req.open("POST", reqURL, true);
+  req.onreadystatechange = function() { processReqChange(req); };
+  req.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+  let strForm = "";
+  for (let i = 0; i < arrayUpdates.length; i++) {
+    if (i > 0) strForm += '&';
+    strForm += arrayUpdates[i];
+  }
+  
+  arrayUpdatesOnLine = arrayUpdates;
+  arrayUpdates = [];
+  document.getElementById("idResponse").innerHTML = "TX...";
+  reqCurrent = req;
+  req.send(strForm);
+  
+  if (idTimeout !== 0) clearTimeout(idTimeout);
+  idTimeout = setTimeout(updateTimeout, iTimeoutDelay + (arrayUpdatesOnLine.length * 100));
+}
+
+function noLocation() {
+  document.getElementById("idAcc").innerHTML = "NO FIX";
+  if (bLoop) {
+    idInterval = setTimeout(findLocation, iDelay);
+  } else {
+    idInterval = 0;
+  }
+  bFindingLocation = false;
+}
+
+function findLocation() {
+  if (!bFindingLocation) {
+    navigator.geolocation.getCurrentPosition(foundLocation, noLocation, {enableHighAccuracy: true});
+    bFindingLocation = true;
+  }
+}
+
+function toggleLoop() {
+  bLoop = !bLoop;
+  const btn = document.getElementById("btnToggle");
+
+  if (bLoop) {
+    btn.innerHTML = "■ STOP";
+    btn.classList.add("active");
+    if (!bInRequest) findLocation();
+  } else {
+    if (idInterval !== 0) {
+      clearTimeout(idInterval);
+      idInterval = 0;
+    }
+    btn.innerHTML = "▶ START";
+    btn.classList.remove("active");
+  }
+}
+
+</script>
+<!-- AVATAR_LAYERS_START -->
+<script>
+window.AVATAR = {
+  canvas: [64, 84],
+  zorder: ["side", "feet", "neck", "head", "eyes"],
+  slots: {
+    "jester": "head",
+    "hardhat": "head",
+    "fedora": "head",
+
+    "round_glasses": "eyes",
+    "square_glasses": "eyes",
+    "eyepatch_l": "eyes",
+    "eyepatch_r": "eyes",
+    "sunglasses": "eyes",
+
+    "tie": "neck",
+    "goldchain": "neck",
+    "lanyard": "neck",
+
+    "pager": "side",
+    "flipper": "side",
+    "coffee": "side",
+    "cane": "side",
+    "sword": "side",
+
+    "clownshoes": "feet",
+    "skateboard": "feet",
+    "fish": "feet"},
+  slot_box: {
+    "head": [4, 0, 59, 19],
+    "eyes": [18, 20, 45, 27],
+    "neck": [20, 30, 43, 46],
+    "side": [0, 22, 17, 78],
+    "feet": [18, 70, 55, 83]},
+  names: {
+    "jester": "Jester Cap",
+    "hardhat": "Hard Hat",
+    "fedora": "Fedora",
+    "round_glasses": "Round Glasses",
+    "square_glasses": "Square Glasses",
+    "eyepatch_l": "Eye Patch (L)",
+    "eyepatch_r": "Eye Patch (R)",
+    "sunglasses": "Sunglasses",
+    "tie": "Tie",
+    "goldchain": "Gold Chain",
+    "lanyard": "Lanyard + Badge",
+    "pager": "Pineapple Pager",
+    "flipper": "Flipper Zero",
+    "coffee": "Cup of Coffee",
+    "cane": "Walking Cane",
+    "sword": "Samurai Sword",
+    "clownshoes": "Clown Shoes",
+    "skateboard": "Skateboard",
+     "fish": "Fresh Catch"},
+  layers: {
+  }
+};
+</script>
+<!-- AVATAR_LAYERS_END -->
+</head>
+<body>
+<div class="scanline"></div>
+<div class="container">
+  <div class="header">
+    <h1>Wardrivegotchi</h1>
+    <div class="subtitle">for the Hak5 WiFi Pineapple Pager</div>
+  </div>
+  
+  <div class="controls">
+    <button class="btn" id="btnToggle" onclick="toggleLoop()">▶ START</button>
+    <button class="btn" id="btnNoSleep">NoSleep Off</button>
+  </div>
+  
+  <div class="data-grid" id="gpsData">
+    <div class="data-row">
+      <div class="data-label">LATITUDE</div>
+      <div class="data-value" id="idLat">—</div>
+    </div>
+    <div class="data-row">
+      <div class="data-label">LONGITUDE</div>
+      <div class="data-value" id="idLon">—</div>
+    </div>
+    <div class="data-row">
+      <div class="data-label">ACCURACY</div>
+      <div class="data-value" id="idAcc">—</div>
+    </div>
+    <div class="data-row">
+      <div class="data-label">TIMESTAMP</div>
+      <div class="data-value" id="idTime">—</div>
+    </div>
+    <div class="data-row">
+      <div class="data-label">STATUS</div>
+      <div class="data-value" id="idResponse">IDLE</div>
+    </div>
+    <div class="data-row">
+      <div class="data-label">QUEUE</div>
+      <div class="data-value" id="idPending">—</div>
+    </div>
+  </div>
+  
+  <div class="profile" id="prof">
+    <div class="avatar" id="avatar"></div>
+    <div class="profile-head">
+      <span class="level-badge" id="pLevel">LVL 1</span>
+      <span class="credits" id="pCredits">0 cr</span>
+    </div>
+    <div class="xpbar">
+      <div class="xpbar-fill" id="pXpFill"></div>
+      <div class="xpbar-text" id="pXpText">0 / 0 XP</div>
+    </div>
+    <div class="stat-chips" id="pStats"></div>
+
+    <div class="section-label">Inventory</div>
+    <div class="inv-line" id="pInv">none yet</div>
+
+    <div class="section-label shop-bar" id="shopBar">
+      <span>Shop</span>
+      <span class="shop-caret" id="shopCaret">▾</span>
+    </div>
+    <div class="shop-filters" id="shopFilters">
+      <button type="button" class="shop-filter on" data-slot="all">All</button>
+      <button type="button" class="shop-filter" data-slot="head">Head</button>
+      <button type="button" class="shop-filter" data-slot="eyes">Eyes</button>
+      <button type="button" class="shop-filter" data-slot="neck">Neck</button>
+      <button type="button" class="shop-filter" data-slot="side">Side</button>
+      <button type="button" class="shop-filter" data-slot="feet">Feet</button>
+    </div>
+    <div id="pShop"></div>
+  </div>
+
+  <div class="control" id="ctl">
+    <div class="control-status">
+      <span class="control-state" id="ctlState">—</span>
+      <span id="ctlSummary"></span>
+    </div>
+
+    <div class="ctl-field">
+      <label for="ctlToken">Key</label>
+      <input type="password" id="ctlToken" autocomplete="off" placeholder="control token">
+    </div>
+
+    <div class="control-grid">
+      <button class="ctl-btn primary" id="ctlStart">▶ Start</button>
+      <button class="ctl-btn" id="ctlPause">⏸ Pause</button>
+      <button class="ctl-btn" id="ctlStop">■ Stop</button>
+      <button class="ctl-btn" id="ctlExport">Export</button>
+      <button class="ctl-btn wide" id="ctlUpload">Upload to Wigle</button>
+    </div>
+
+    <div class="ctl-bands">
+      <div class="ctl-band" id="band24" data-band="b24">2.4</div>
+      <div class="ctl-band" id="band5" data-band="b5">5</div>
+      <div class="ctl-band" id="band6" data-band="b6">6</div>
+    </div>
+
+    <div class="ctl-msg" id="ctlMsg"></div>
+  </div>
+
+  <div class="datasec" id="radarSec">
+    <div class="section-label sec-bar" id="radarBar"><span>Radar</span><span class="sec-caret" id="radarCaret">▾</span></div>
+    <div id="radarBody">
+      <div class="radar-wrap"><canvas id="radar" width="600" height="600"></canvas></div>
+      <div class="radar-legend">
+        <span><i class="enc-open"></i>Open</span>
+        <span><i class="enc-wep"></i>WEP</span>
+        <span><i class="enc-wpa"></i>WPA</span>
+        <span><i class="enc-wpa3"></i>WPA3</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="datasec" id="listSec">
+    <div class="section-label sec-bar" id="listBar"><span>Networks</span><span class="sec-caret" id="listCaret">▾</span></div>
+    <div id="listBody">
+      <div class="ap-controls">
+        <input type="search" id="apSearch" placeholder="search SSID or BSSID" autocomplete="off">
+        <select id="apEnc">
+          <option value="all">All</option>
+          <option value="Open">Open</option>
+          <option value="WEP">WEP</option>
+          <option value="WPA">WPA</option>
+          <option value="WPA3">WPA3</option>
+        </select>
+        <select id="apSort">
+          <option value="recent">Recent</option>
+          <option value="signal">Signal</option>
+          <option value="distance">Distance</option>
+        </select>
+      </div>
+      <div id="apList"></div>
+    </div>
+  </div>
+
+  <div class="tips">
+    <div class="tips-title">Tips</div>
+    <ul>
+      <li>Enable Precise Location.</li>
+      <li>NoSleep will stop your screen from auto-locking.</li>
+    </ul>
+  </div>
+  
+</div>
+<script>
+/*! NoSleep.min.js v0.12.0 - git.io/vfn01 - Rich Tibbett - MIT license */
+!function(A,e){"object"==typeof exports&&"object"==typeof module?module.exports=e():"function"==typeof define&&define.amd?define([],e):"object"==typeof exports?exports.NoSleep=e():A.NoSleep=e()}(this,(function(){return function(A){var e={};function B(g){if(e[g])return e[g].exports;var o=e[g]={i:g,l:!1,exports:{}};return A[g].call(o.exports,o,o.exports,B),o.l=!0,o.exports}return B.m=A,B.c=e,B.d=function(A,e,g){B.o(A,e)||Object.defineProperty(A,e,{enumerable:!0,get:g})},B.r=function(A){"undefined"!=typeof Symbol&&Symbol.toStringTag&&Object.defineProperty(A,Symbol.toStringTag,{value:"Module"}),Object.defineProperty(A,"__esModule",{value:!0})},B.t=function(A,e){if(1&e&&(A=B(A)),8&e)return A;if(4&e&&"object"==typeof A&&A&&A.__esModule)return A;var g=Object.create(null);if(B.r(g),Object.defineProperty(g,"default",{enumerable:!0,value:A}),2&e&&"string"!=typeof A)for(var o in A)B.d(g,o,function(e){return A[e]}.bind(null,o));return g},B.n=function(A){var e=A&&A.__esModule?function(){return A.default}:function(){return A};return B.d(e,"a",e),e},B.o=function(A,e){return Object.prototype.hasOwnProperty.call(A,e)},B.p="",B(B.s=0)}([function(A,e,B){"use strict";var g=function(){function A(A,e){for(var B=0;B<e.length;B++){var g=e[B];g.enumerable=g.enumerable||!1,g.configurable=!0,"value"in g&&(g.writable=!0),Object.defineProperty(A,g.key,g)}}return function(e,B,g){return B&&A(e.prototype,B),g&&A(e,g),e}}();var o=B(1),E=o.webm,n=o.mp4,C=function(){return"undefined"!=typeof navigator&&parseFloat((""+(/CPU.*OS ([0-9_]{3,4})[0-9_]{0,1}|(CPU like).*AppleWebKit.*Mobile/i.exec(navigator.userAgent)||[0,""])[1]).replace("undefined","3_2").replace("_",".").replace("_",""))<10&&!window.MSStream},Q=function(){return"wakeLock"in navigator},i=function(){function A(){var e=this;if(function(A,e){if(!(A instanceof e))throw new TypeError("Cannot call a class as a function")}(this,A),this.enabled=!1,Q()){this._wakeLock=null;var B=function(){null!==e._wakeLock&&"visible"===document.visibilityState&&e.enable()};document.addEventListener("visibilitychange",B),document.addEventListener("fullscreenchange",B)}else C()?this.noSleepTimer=null:(this.noSleepVideo=document.createElement("video"),this.noSleepVideo.setAttribute("title","No Sleep"),this.noSleepVideo.setAttribute("playsinline",""),this._addSourceToVideo(this.noSleepVideo,"webm",E),this._addSourceToVideo(this.noSleepVideo,"mp4",n),this.noSleepVideo.addEventListener("loadedmetadata",(function(){e.noSleepVideo.duration<=1?e.noSleepVideo.setAttribute("loop",""):e.noSleepVideo.addEventListener("timeupdate",(function(){e.noSleepVideo.currentTime>.5&&(e.noSleepVideo.currentTime=Math.random())}))})))}return g(A,[{key:"_addSourceToVideo",value:function(A,e,B){var g=document.createElement("source");g.src=B,g.type="video/"+e,A.appendChild(g)}},{key:"enable",value:function(){var A=this;return Q()?navigator.wakeLock.request("screen").then((function(e){A._wakeLock=e,A.enabled=!0,console.log("Wake Lock active."),A._wakeLock.addEventListener("release",(function(){console.log("Wake Lock released.")}))})).catch((function(e){throw A.enabled=!1,console.error(e.name+", "+e.message),e})):C()?(this.disable(),console.warn("\n        NoSleep enabled for older iOS devices. This can interrupt\n        active or long-running network requests from completing successfully.\n        See https://github.com/richtr/NoSleep.js/issues/15 for more details.\n      "),this.noSleepTimer=window.setInterval((function(){document.hidden||(window.location.href=window.location.href.split("#")[0],window.setTimeout(window.stop,0))}),15e3),this.enabled=!0,Promise.resolve()):this.noSleepVideo.play().then((function(e){return A.enabled=!0,e})).catch((function(e){throw A.enabled=!1,e}))}},{key:"disable",value:function(){Q()?(this._wakeLock&&this._wakeLock.release(),this._wakeLock=null):C()?this.noSleepTimer&&(console.warn("\n          NoSleep now disabled for older iOS devices.\n        "),window.clearInterval(this.noSleepTimer),this.noSleepTimer=null):this.noSleepVideo.pause(),this.enabled=!1}},{key:"isEnabled",get:function(){return this.enabled}}]),A}();A.exports=i},function(A,e,B){"use strict";A.exports={webm:"data:video/webm;base64,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",mp4:"data:video/mp4;base64,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"}}])}));
+
+const noSleep = new NoSleep();
+let wakeLockEnabled = false;
+const toggleEl = document.getElementById("btnNoSleep");
+
+toggleEl.addEventListener('click', function() {
+  if (!wakeLockEnabled) {
+    noSleep.enable();
+    wakeLockEnabled = true;
+    toggleEl.innerHTML = "NoSleep On";
+    toggleEl.classList.add("active");
+  } else {
+    noSleep.disable();
+    wakeLockEnabled = false;
+    toggleEl.innerHTML = "NoSleep Off";
+    toggleEl.classList.remove("active");
+  }
+}, false);
+
+
+// ---- Control panel -------------------------------------------------------
+// The panel drives the wardriving payload through this same origin. The GPS
+// server relays each call to the payload over localhost, because a browser will
+// not let this HTTPS page call the payload's plain-HTTP port directly. The panel
+// stays hidden until /status confirms a payload is behind the server.
+(function () {
+  const ctl = document.getElementById("ctl");
+  const elState = document.getElementById("ctlState");
+  const elSummary = document.getElementById("ctlSummary");
+  const elMsg = document.getElementById("ctlMsg");
+  const elToken = document.getElementById("ctlToken");
+  const bands = {
+    b24: document.getElementById("band24"),
+    b5: document.getElementById("band5"),
+    b6: document.getElementById("band6")
+  };
+
+  // Remember the token for this page only. It is a shared key, not a password
+  // for an account, and it saves retyping it on every reload.
+  try { elToken.value = sessionStorage.getItem("ctlToken") || ""; } catch (e) {}
+  elToken.addEventListener("change", function () {
+    try { sessionStorage.setItem("ctlToken", elToken.value); } catch (e) {}
+  });
+
+  function show(id, on) { document.getElementById(id).disabled = !on; }
+
+  function command(action, params) {
+    elMsg.textContent = action + "...";
+    fetch("/control", {
+      method: "POST",
+      headers: { "Content-Type": "application/json",
+                 "X-Control-Token": elToken.value },
+      body: JSON.stringify({ action: action, params: params || {} })
+    }).then(function (r) {
+      return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+    }).then(function (res) {
+      if (res.ok) {
+        elMsg.textContent = res.body.queued ? (res.body.queued + " sent") : "sent";
+      } else {
+        elMsg.textContent = (res.body && res.body.message) || ("error " );
+      }
+    }).catch(function () { elMsg.textContent = "no response"; });
+  }
+
+  document.getElementById("ctlStart").addEventListener("click", function () { command("start"); });
+  document.getElementById("ctlPause").addEventListener("click", function () {
+    // One button pauses a running scan and resumes a paused one.
+    command(elState.dataset.state === "paused" ? "resume" : "pause");
+  });
+  document.getElementById("ctlStop").addEventListener("click", function () { command("stop"); });
+  document.getElementById("ctlExport").addEventListener("click", function () { command("export"); });
+  document.getElementById("ctlUpload").addEventListener("click", function () { command("upload"); });
+
+  Object.keys(bands).forEach(function (key) {
+    bands[key].addEventListener("click", function () {
+      const params = {};
+      params[key] = !bands[key].classList.contains("on");
+      command("set_bands", params);
+    });
+  });
+
+
+  // ---- Profile / progression ----------------------------------------------
+  const prof = document.getElementById("prof");
+
+  // Shop view state: which slot is filtered and whether the list is collapsed.
+  // Both persist for the page session and survive the 2-second status refresh.
+  var shopFilter = "all";
+  var shopCollapsed = false;
+  var lastShop = [];
+  try {
+    shopFilter = sessionStorage.getItem("shopFilter") || "all";
+    shopCollapsed = sessionStorage.getItem("shopCollapsed") === "1";
+  } catch (e) {}
+
+  function renderShopList() {
+    const filters = document.getElementById("shopFilters");
+    const list = document.getElementById("pShop");
+    document.getElementById("shopCaret").textContent = shopCollapsed ? "\u25b8" : "\u25be";
+    filters.hidden = shopCollapsed;
+    list.hidden = shopCollapsed;
+    if (shopCollapsed) return;
+
+    filters.querySelectorAll(".shop-filter").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-slot") === shopFilter);
+    });
+
+    const items = lastShop.filter(function (i) {
+      return shopFilter === "all" || i.slot === shopFilter;
+    });
+
+    list.innerHTML = items.map(function (i) {
+      let right;
+      if (!i.owned) {
+        right = '<button class="buy" data-act="buy" data-item="' + esc(i.id) + '"' +
+                (i.affordable ? '' : ' disabled') + '>' + i.cost + ' cr</button>';
+      } else if (i.equipped) {
+        right = '<button class="buy" data-act="unequip" data-item="' + esc(i.id) + '">Worn</button>';
+      } else {
+        right = '<button class="buy" data-act="equip" data-item="' + esc(i.id) + '">Wear</button>';
+      }
+      const cls = i.equipped ? "shop-item owned" : "shop-item";
+      return '<div class="' + cls + '"><div><div class="name">' + esc(i.name) +
+             '</div><div class="desc">' + esc(i.slot) + ' \u00b7 lvl ' + i.level +
+             '</div></div>' + right + '</div>';
+    }).join("") || '<div class="shop-empty">No items in this category.</div>';
+
+    list.querySelectorAll(".buy[data-act]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        command(btn.getAttribute("data-act"), { item_id: btn.getAttribute("data-item") });
+      });
+    });
+  }
+
+  document.getElementById("shopBar").addEventListener("click", function () {
+    shopCollapsed = !shopCollapsed;
+    try { sessionStorage.setItem("shopCollapsed", shopCollapsed ? "1" : "0"); } catch (e) {}
+    renderShopList();
+  });
+  document.getElementById("shopFilters").addEventListener("click", function (e) {
+    const btn = e.target.closest(".shop-filter");
+    if (!btn) return;
+    shopFilter = btn.getAttribute("data-slot");
+    try { sessionStorage.setItem("shopFilter", shopFilter); } catch (e2) {}
+    renderShopList();
+  });
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+
+  function renderAvatar(equipped) {
+    const box = document.getElementById("avatar");
+    if (!window.AVATAR || !box) return;
+    equipped = equipped || {};
+    const L = window.AVATAR.layers || {};
+    if (L.base) {
+      // Real art present: stack the transparent layers in z-order.
+      let html = '<img src="' + L.base + '" alt="owl">';
+      window.AVATAR.zorder.forEach(function (slot) {
+        const id = equipped[slot];
+        if (id && L[id]) html += '<img src="' + L[id] + '" alt="">';
+      });
+      box.innerHTML = html;
+    } else {
+      // No art yet: draw the placeholder, marking every worn slot.
+      drawPlaceholderAvatar(box, equipped);
+    }
+  }
+
+  function drawPlaceholderAvatar(box, equipped) {
+    const A = window.AVATAR, cw = A.canvas[0], ch = A.canvas[1];
+    let cv = box.querySelector("canvas");
+    if (!cv) { box.innerHTML = ""; cv = document.createElement("canvas"); box.appendChild(cv); }
+    const S = 3;
+    cv.width = cw * S; cv.height = ch * S;
+    cv.style.width = "100%"; cv.style.height = "100%";
+    const g = cv.getContext("2d");
+    const css = getComputedStyle(document.documentElement);
+    const surface = (css.getPropertyValue("--surface") || "#eee").trim();
+    const ink = (css.getPropertyValue("--ink") || "#111").trim();
+    const brand = (css.getPropertyValue("--brand-primary") || "#ffc107").trim();
+    g.clearRect(0, 0, cv.width, cv.height);
+    g.fillStyle = surface; g.fillRect(0, 0, cv.width, cv.height);
+
+    function ell(cx, cy, rx, ry, fill) {
+      g.beginPath();
+      g.ellipse(cx * S, cy * S, rx * S, ry * S, 0, 0, Math.PI * 2);
+      g.fillStyle = fill; g.fill();
+      g.lineWidth = S; g.strokeStyle = "#5a5a5a"; g.stroke();
+    }
+    // A plain generic owl - deliberately not the finished look.
+    ell(32, 52, 17, 24, "#c9c9c2");
+    ell(32, 24, 14, 13, "#c9c9c2");
+    g.fillStyle = "#5a5a5a";
+    g.fillRect(21 * S, 6 * S, 2 * S, 6 * S); g.fillRect(41 * S, 6 * S, 2 * S, 6 * S);
+    g.fillStyle = "#333";
+    ell(26, 24, 3, 3, "#333"); ell(38, 24, 3, 3, "#333");
+
+    // Mark each worn slot: its box outlined, filled faintly, and labelled.
+    g.textAlign = "center"; g.textBaseline = "middle";
+    A.zorder.forEach(function (slot) {
+      const id = equipped[slot];
+      if (!id) return;
+      const b = A.slot_box[slot], x = b[0] * S, y = b[1] * S;
+      const w = (b[2] - b[0] + 1) * S, h = (b[3] - b[1] + 1) * S;
+      g.globalAlpha = 0.35; g.fillStyle = brand; g.fillRect(x, y, w, h);
+      g.globalAlpha = 1; g.lineWidth = S; g.strokeStyle = ink; g.strokeRect(x, y, w, h);
+      const label = (A.names && A.names[id]) || id;
+      g.fillStyle = ink;
+      g.font = "bold " + Math.max(9, Math.floor(2.6 * S)) + "px system-ui, sans-serif";
+      g.fillText(label, x + w / 2, y + h / 2, w - 2 * S);
+    });
+
+    g.globalAlpha = 0.9; g.fillStyle = ink;
+    g.font = "bold " + (3 * S) + "px system-ui, sans-serif";
+    g.textAlign = "center"; g.fillText("PLACEHOLDER ART", cv.width / 2, cv.height - 6 * S);
+    g.globalAlpha = 1;
+  }
+
+  function renderProfile(p) {
+    if (!p) { prof.classList.remove("on"); return; }
+    prof.classList.add("on");
+
+    document.getElementById("pLevel").textContent = "LVL " + p.level;
+    document.getElementById("pCredits").textContent = p.credits + " cr";
+    document.getElementById("pXpFill").style.width = (p.xp_pct || 0) + "%";
+    document.getElementById("pXpText").textContent =
+      p.xp_into + " / " + p.xp_span + " XP";
+
+    const db = p.db_stats || {};
+    const c = p.counters || {};
+    const chips = [
+      ["APs", db.total || 0], ["Open", db.open || 0], ["WPA", db.wpa || 0],
+      ["WPA3", db.wpa3 || 0], ["Shakes", db.handshakes || 0],
+      ["Best run", c.best_session_aps || 0]
+    ];
+    document.getElementById("pStats").innerHTML = chips.map(function (x) {
+      return '<div class="stat-chip"><span class="n">' + x[1] +
+             '</span><span class="k">' + x[0] + '</span></div>';
+    }).join("");
+
+    const shop = p.shop || [];
+    const owned = shop.filter(function (i) { return i.owned; })
+                      .map(function (i) { return i.name; });
+    document.getElementById("pInv").textContent = owned.length ? owned.join(", ") : "none yet";
+
+    // The shop list is filtered and collapsible; render it through its own
+    // helper so the type filter and collapsed state survive each refresh.
+    lastShop = shop;
+    renderShopList();
+
+    renderAvatar(p.equipped || {});
+  }
+
+  // ---- Radar + network list -----------------------------------------------
+  var lastAps = [];
+  var myPos = null;                 // [lat, lon] when we have a fresh fix
+  var apSearch = "", apEnc = "all", apSort = "recent";
+  var radarCollapsed = false, listCollapsed = false;
+  try {
+    apEnc = sessionStorage.getItem("apEnc") || "all";
+    apSort = sessionStorage.getItem("apSort") || "recent";
+    radarCollapsed = sessionStorage.getItem("radarCollapsed") === "1";
+    listCollapsed = sessionStorage.getItem("listCollapsed") === "1";
+  } catch (e) {}
+
+  const ENC_CLASS = { "Open": "enc-open", "WEP": "enc-wep", "WPA": "enc-wpa", "WPA2": "enc-wpa", "WPA3": "enc-wpa3" };
+  const ENC_COLOR = { "enc-open": "#e5484d", "enc-wep": "#d29922", "enc-wpa": "#9b9384", "enc-wpa3": "#46a758" };
+  function encClass(e) { return ENC_CLASS[e] || "enc-wpa"; }
+
+  function metresBetween(aLat, aLon, bLat, bLon) {
+    var R = 6371000, r = Math.PI / 180;
+    var dLat = (bLat - aLat) * r, dLon = (bLon - aLon) * r;
+    var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function apDistance(a) {
+    if (!myPos) return null;
+    if (!a.lat && !a.lon) return null;
+    return metresBetween(myPos[0], myPos[1], a.lat, a.lon);
+  }
+  function positionedAps() {
+    return lastAps.filter(function (a) { return (a.lat || a.lon) && !(a.lat === 0 && a.lon === 0); });
+  }
+
+  function renderRadar() {
+    const sec = document.getElementById("radarSec");
+    const cv = document.getElementById("radar");
+    if (!cv) return;
+    const pos = positionedAps();
+    sec.classList.toggle("on", pos.length > 0 || !!myPos);
+    document.getElementById("radarCaret").textContent = radarCollapsed ? "\u25b8" : "\u25be";
+    document.getElementById("radarBody").hidden = radarCollapsed;
+    if (radarCollapsed || !sec.classList.contains("on")) return;
+
+    const g = cv.getContext("2d");
+    const W = cv.width, H = cv.height, cx = W / 2, cy = H / 2;
+    const css = getComputedStyle(document.documentElement);
+    const ink = (css.getPropertyValue("--ink") || "#111").trim();
+    const muted = (css.getPropertyValue("--ink-muted") || "#777").trim();
+    g.clearRect(0, 0, W, H);
+
+    // Auto-range from the farthest nearby AP, ignoring far outliers (e.g. a
+    // stale AP from earlier in the drive) so one point cannot blow up the scale.
+    // Points beyond the range are simply clipped from the plot below.
+    var maxM = 50, RANGE_CAP = 2000;
+    if (myPos) pos.forEach(function (a) { var d = apDistance(a); if (d && d <= RANGE_CAP && d > maxM) maxM = d; });
+    var nice = [50, 100, 200, 300, 500, 1000, 2000];
+    var range = nice.find(function (n) { return n >= maxM; }) || RANGE_CAP;
+    var scale = (Math.min(W, H) / 2 - 24) / range;
+
+    g.strokeStyle = muted; g.fillStyle = muted; g.lineWidth = 1;
+    g.font = "20px system-ui, sans-serif"; g.textAlign = "center";
+    [range / 2, range].forEach(function (rr) {
+      g.beginPath(); g.arc(cx, cy, rr * scale, 0, Math.PI * 2); g.stroke();
+      g.fillText(rr >= 1000 ? (rr / 1000) + "km" : rr + "m", cx, cy - rr * scale - 4);
+    });
+    g.beginPath(); g.moveTo(cx - 8, cy); g.lineTo(cx + 8, cy); g.moveTo(cx, cy - 8); g.lineTo(cx, cy + 8); g.stroke();
+    g.fillStyle = ink; g.fillText("N", cx, 16);
+
+    if (!myPos) {
+      g.fillStyle = muted; g.font = "24px system-ui, sans-serif";
+      g.fillText("waiting for GPS fix", cx, cy + 40);
+      return;
+    }
+    var mLat = 111320, mLon = 111320 * Math.cos(myPos[0] * Math.PI / 180);
+    pos.forEach(function (a) {
+      var x = cx + (a.lon - myPos[1]) * mLon * scale;
+      var y = cy - (a.lat - myPos[0]) * mLat * scale;
+      if (x < 2 || x > W - 2 || y < 2 || y > H - 2) return;
+      g.fillStyle = ENC_COLOR[encClass(a.encryption)] || muted;
+      g.beginPath(); g.arc(x, y, a.handshake ? 8 : 6, 0, Math.PI * 2); g.fill();
+      g.strokeStyle = ink; g.lineWidth = 1.5; g.stroke();
+    });
+  }
+
+  function renderList() {
+    const sec = document.getElementById("listSec");
+    sec.classList.toggle("on", lastAps.length > 0);
+    document.getElementById("listCaret").textContent = listCollapsed ? "\u25b8" : "\u25be";
+    document.getElementById("listBody").hidden = listCollapsed;
+    if (listCollapsed || !sec.classList.contains("on")) return;
+
+    var q = apSearch.toLowerCase();
+    var items = lastAps.filter(function (a) {
+      if (apEnc !== "all") {
+        var e = a.encryption === "WPA2" ? "WPA" : a.encryption;
+        if (e !== apEnc) return false;
+      }
+      if (q) {
+        return (a.ssid || "").toLowerCase().indexOf(q) !== -1 ||
+               (a.bssid || "").toLowerCase().indexOf(q) !== -1;
+      }
+      return true;
+    });
+    items.forEach(function (a) { a._d = apDistance(a); });
+    if (apSort === "signal") items.sort(function (x, y) { return (y.signal || -999) - (x.signal || -999); });
+    else if (apSort === "distance") items.sort(function (x, y) {
+      return (x._d == null ? 1e12 : x._d) - (y._d == null ? 1e12 : y._d);
+    });
+
+    var el = document.getElementById("apList");
+    el.innerHTML = items.slice(0, 150).map(function (a) {
+      var e = a.encryption || "Open";
+      var dist = a._d == null ? "" : (a._d < 1000 ? Math.round(a._d) + "m" : (a._d / 1000).toFixed(1) + "km");
+      var meta = "ch" + (a.channel || "-") + " \u00b7 " + (a.signal || "?") + "dBm" + (dist ? " \u00b7 " + dist : "");
+      return '<div class="ap-row"><div style="flex:1;min-width:0">' +
+        '<div class="ssid">' + esc(a.ssid || "(hidden)") + (a.handshake ? ' <span class="ap-hs">HS</span>' : '') + '</div>' +
+        '<div class="bssid">' + esc(a.bssid || "") + '</div></div>' +
+        '<span class="ap-enc ' + encClass(e) + '">' + esc(e) + '</span>' +
+        '<span class="meta">' + meta + '</span></div>';
+    }).join("") || '<div class="ap-empty">No matching networks.</div>';
+  }
+
+  document.getElementById("radarBar").addEventListener("click", function () {
+    radarCollapsed = !radarCollapsed;
+    try { sessionStorage.setItem("radarCollapsed", radarCollapsed ? "1" : "0"); } catch (e) {}
+    renderRadar();
+  });
+  document.getElementById("listBar").addEventListener("click", function () {
+    listCollapsed = !listCollapsed;
+    try { sessionStorage.setItem("listCollapsed", listCollapsed ? "1" : "0"); } catch (e) {}
+    renderList();
+  });
+  document.getElementById("apSearch").addEventListener("input", function (e) { apSearch = e.target.value; renderList(); });
+  document.getElementById("apEnc").addEventListener("change", function (e) {
+    apEnc = e.target.value; try { sessionStorage.setItem("apEnc", apEnc); } catch (x) {} renderList();
+  });
+  document.getElementById("apSort").addEventListener("change", function (e) {
+    apSort = e.target.value; try { sessionStorage.setItem("apSort", apSort); } catch (x) {} renderList();
+  });
+  document.getElementById("apEnc").value = apEnc;
+  document.getElementById("apSort").value = apSort;
+
+  function render(s) {
+    const state = s.scan_state || "stopped";
+    elState.textContent = state;
+    elState.dataset.state = state;
+    elState.className = "control-state " + state;
+
+    document.getElementById("ctlPause").textContent = state === "paused" ? "▶ Resume" : "⏸ Pause";
+    show("ctlStart", state === "stopped");
+    show("ctlPause", state !== "stopped");
+    show("ctlStop", state !== "stopped");
+
+    const mins = Math.floor((s.elapsed || 0) / 60);
+    const secs = (s.elapsed || 0) % 60;
+    const fix = s.gps_fix ? (s.sats + " sat") : "no fix";
+    elSummary.textContent = " " + (s.total || 0) + " APs · ch " + (s.channel || 0) +
+      " · " + mins + "m" + (secs < 10 ? "0" : "") + secs + " · " + fix;
+
+    if (s.bands) {
+      Object.keys(bands).forEach(function (key) {
+        bands[key].classList.toggle("on", !!s.bands[key]);
+      });
+    }
+    if (s.message) { elMsg.textContent = s.message; }
+    renderProfile(s.player);
+
+    lastAps = s.recent_aps || [];
+    myPos = s.gps_fix ? [s.lat, s.lon] : null;
+    renderRadar();
+    renderList();
+  }
+
+  function poll() {
+    fetch("/status").then(function (r) { return r.json(); }).then(function (s) {
+      if (!s.available) { ctl.classList.remove("on"); prof.classList.remove("on"); return; }
+      ctl.classList.add("on");
+
+      // When a separate GPS module feeds position (serial mode), this page is a
+      // dashboard only: hide the GPS-feed button and readout, keep everything
+      // else. NoSleep stays, so the screen can be kept awake to watch it.
+      const gpsFeed = s.gps_source && s.gps_source !== "phone";
+      const toggle = document.getElementById("btnToggle");
+      const grid = document.getElementById("gpsData");
+      if (toggle) toggle.hidden = gpsFeed;
+      if (grid) grid.hidden = gpsFeed;
+
+      if (s.control_enabled === false) {
+        elMsg.textContent = "Control is off. Set control_token in settings.json.";
+      }
+      if (s.reachable === false) {
+        elState.textContent = "offline";
+        elState.className = "control-state";
+        return;
+      }
+      render(s);
+    }).catch(function () { /* leave the panel as it is */ });
+  }
+
+  poll();
+  setInterval(poll, 2000);
+})();
+
+</script>
+
+</body>
+</html>
