@@ -29,6 +29,29 @@ The item itself - its id, name, slot, cost and level - is one line in
 avatar all read that file, so that one line makes the item buyable and wearable.
 Until you add its art (below) it shows the placeholder marker for its slot.
 
+## Drawing templates (correct sizes, marked boxes)
+
+`templates/` holds a drawing guide for every slot, made by
+`python3 assets/gen_templates.py`. Each is the full canvas at the phone
+(high-res) size, **384 x 504 px** (the Pager low-res copy is **128 x 168 px**):
+
+- `overview.png` - every slot box on the owl, labelled. Reference only.
+- `template_head.png`, `template_eyes.png`, `template_neck.png`,
+  `template_side.png`, `template_feet.png` - one per slot. The slot's drawable
+  box is bright (draw only inside it); the faint owl and neighbour boxes are for
+  registration.
+- `template_base.png` - a guide for drawing the owl itself (`base.png`).
+- `blank_highres_384x504.png`, `blank_lowres_128x168.png` - empty transparent
+  canvases at the two export sizes.
+
+Workflow: open a slot template, add a **new layer** on top, draw the item inside
+the bright box, then hide/delete the template layer and export just your layer:
+
+- to `highres/<item_id>.png` at 384 x 504, and
+- a copy scaled to 128 x 168 (nearest-neighbour) to `lowres/<item_id>.png`.
+
+The templates are guides only - never flatten them into your art.
+
 ## Adding your art
 
 1. Draw the layers and save them into `highres/` and `lowres/` with the names
