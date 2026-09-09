@@ -19,7 +19,7 @@ class LootHandler(SimpleHTTPRequestHandler):
         elif self.path == '/api/status':
             self._json_response(self._get_control_status())
         elif self.path == '/api/settings':
-            self._json_response(load_config())
+            self._json_response(self._safe_settings())
         elif self.path.startswith('/download/'):
             self._serve_file(self.path[10:])
         else:
@@ -104,6 +104,17 @@ class LootHandler(SimpleHTTPRequestHandler):
         else:
             self._json_response({'status': 'error', 'message': 'busy'}, 503)
 
+    def _safe_settings(self):
+        """Settings for the page with secrets redacted, so the Wigle token and
+        the control token are never sent over the unauthenticated, plain-HTTP
+        LAN. A blank secret on save is ignored (see _save_settings), so the
+        stored value is kept."""
+        cfg = dict(load_config())
+        for secret in ('wigle_api_token', 'control_token'):
+            if cfg.get(secret):
+                cfg[secret] = ''
+        return cfg
+
     def _save_settings(self):
         body = self._read_body().decode()
         try:
@@ -115,6 +126,10 @@ class LootHandler(SimpleHTTPRequestHandler):
                         'scan_2_4ghz', 'scan_5ghz', 'scan_6ghz', 'scan_mode',
                         'scan_interface', 'capture_interface', 'capture_enabled'):
                 if key in data:
+                    # A blank token means the redacted field was left untouched;
+                    # keep the stored one instead of wiping it.
+                    if key == 'wigle_api_token' and not data[key]:
+                        continue
                     config[key] = data[key]
             save_config(config)
             self._json_response({'status': 'ok'})

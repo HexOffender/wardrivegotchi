@@ -20,6 +20,9 @@ class Database:
         self.average_positions = average_positions
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.execute("PRAGMA journal_mode=WAL")
+        # Wait (up to 5s) rather than erroring when another connection - e.g. a
+        # background export/upload - holds the write lock.
+        self.conn.execute("PRAGMA busy_timeout=5000")
         self._create_tables()
 
     def _create_tables(self):

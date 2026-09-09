@@ -107,6 +107,7 @@ class Wardrive:
         self._publish_at = 0.0
         self._recent_aps_cache = None
         self._recent_aps_at = 0.0
+        self._bg_busy = False  # a background export/upload is running
 
         from config import LOOT_DIR
         self.player = Player.load(os.path.join(LOOT_DIR, 'player.json'))
@@ -522,16 +523,24 @@ class Wardrive:
             save_config(self.config)
         elif action in ('export', 'upload'):
             # These read files and, for upload, reach the network. Run them off
-            # the main loop so the dashboard and the GPS feed do not stall.
-            target = self._export_callback if action == 'export' else self._upload_callback
-            threading.Thread(target=self._run_reported, args=(target,), daemon=True).start()
+            # the main loop so the dashboard and the GPS feed do not stall, and
+            # only one at a time (each opens its own database connection).
+            if self._bg_busy:
+                self._last_command_message = 'Busy, try again'
+            else:
+                target = self._export_callback if action == 'export' else self._upload_callback
+                self._bg_busy = True
+                threading.Thread(target=self._run_reported, args=(target,), daemon=True).start()
 
     def _run_reported(self, fn):
-        """Run a callback and store its message for the status snapshot."""
+        """Run a background callback, store its message for the status snapshot,
+        then release the busy flag."""
         try:
             self._last_command_message = fn()
         except Exception as e:
             self._last_command_message = str(e)
+        finally:
+            self._bg_busy = False
 
     def _get_stats_cached(self, force=False):
         """Database stats, refreshed at most every STATS_INTERVAL (or at once
@@ -577,9 +586,15 @@ class Wardrive:
         }
 
     def _export_callback(self):
-        """Export to Wigle CSV."""
+        """Export to a Wigle CSV. Opens its own database connection because it can
+        run on a background thread, and a sqlite connection is not safe to share
+        with the main loop."""
         try:
-            filepath = export_csv(self.db, EXPORT_DIR)
+            db = Database(DB_PATH, average_positions=self.config.get('gps_average_positions', False))
+            try:
+                filepath = export_csv(db, EXPORT_DIR)
+            finally:
+                db.close()
             return f"Exported: {os.path.basename(filepath)}"
         except Exception as e:
             return f"Export failed: {e}"
@@ -594,15 +609,19 @@ class Wardrive:
         if not name or not token:
             return "No API key set"
         try:
-            aps = self.db.get_unuploaded_aps()
-            if not aps:
-                return "Nothing new to upload"
-            filepath = export_ap_list(aps, EXPORT_DIR)
-            success, msg = upload_to_wigle(filepath, name, token)
-            if success:
-                self.db.mark_uploaded(ap['bssid'] for ap in aps)
-                return "%s (%d new)" % (msg, len(aps))
-            return msg
+            db = Database(DB_PATH, average_positions=self.config.get('gps_average_positions', False))
+            try:
+                aps = db.get_unuploaded_aps()
+                if not aps:
+                    return "Nothing new to upload"
+                filepath = export_ap_list(aps, EXPORT_DIR)
+                success, msg = upload_to_wigle(filepath, name, token)
+                if success:
+                    db.mark_uploaded(ap['bssid'] for ap in aps)
+                    return "%s (%d new)" % (msg, len(aps))
+                return msg
+            finally:
+                db.close()
         except Exception as e:
             return f"Upload failed: {e}"
 

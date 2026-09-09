@@ -135,12 +135,21 @@ def load_config():
 
 
 def save_config(config):
-    """Save settings to disk."""
+    """Save settings to disk atomically, so a crash or power loss mid-write
+    cannot truncate settings.json - which would lose the Wigle keys and the
+    control token on the next load."""
+    tmp = SETTINGS_FILE + '.tmp'
     try:
-        with open(SETTINGS_FILE, 'w') as f:
+        with open(tmp, 'w') as f:
             json.dump(config, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, SETTINGS_FILE)
     except Exception:
-        pass
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
 
 def ensure_dirs():
