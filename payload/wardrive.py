@@ -501,6 +501,21 @@ class Wardrive:
         self._last_command_message = 'Level %d!' % level
         self._beep(1200, 120)
 
+    def _announce_achievements(self, newly):
+        """Surface newly unlocked achievements: one message and a single chime,
+        however many unlocked at once, so a first big walk does not beep a dozen
+        times. A new title is the headline when one was earned."""
+        if not newly:
+            return
+        titled = [a for a in newly if a.get('title')]
+        if titled:
+            self._last_command_message = 'Title: ' + titled[-1]['title']
+        elif len(newly) == 1:
+            self._last_command_message = 'Unlocked: ' + newly[0]['name']
+        else:
+            self._last_command_message = 'Unlocked %d achievements!' % len(newly)
+        self._beep(1600, 140)
+
     def _apply_command(self, cmd):
         """Run one command from the phone control. Called on the main thread."""
         action = cmd.get('action')
@@ -806,6 +821,11 @@ class Wardrive:
 
                     stats = self._get_stats_cached()
                     gps = self.gps_state.copy()
+
+                    # Unlock any achievements the new totals have earned, and
+                    # announce them. Cheap (a handful of comparisons) and a no-op
+                    # once everything reachable is unlocked.
+                    self._announce_achievements(self.player.check_achievements(stats))
 
                     # Drive track. fix_mode is already stale-adjusted by copy().
                     if (self.config.get('gpx_enabled', True)

@@ -19,41 +19,52 @@ import json
 import os
 import time
 
-SCHEMA = 1
+SCHEMA = 2
 
-# The level curve. The experience to REACH level L is XP_BASE * (L-1) * L / 2,
-# thus each level costs XP_BASE more than the one before. With XP_BASE = 100:
-# level 2 at 100, level 5 at 1000, level 10 at 4500. An average find is about
-# 13 experience, so level 2 is roughly eight access points and level 10 a few
-# hundred - fast at first, a grind later, which is the escalating feel asked for.
-XP_BASE = 100
+# The level curve. Experience to REACH level L is A * (L-1) ** P. The exponent P
+# (> 1) makes each level cost progressively more, so the curve is fast at first
+# and a grind later. This shape is deliberate: in an urban area a 15-minute walk
+# logs a few thousand access points, so a linear curve would rocket past level
+# 20 in one outing. With A=12, P=2.5 a sit-down scan (50-100 APs) is the first
+# ~5 levels, a first big walk reaches the high teens, and levels 50/100 are the
+# work of many sessions. All three numbers are tunable; the level math derives
+# from them, so changing them never makes level and experience disagree.
+XP_CURVE_A = 12
+XP_CURVE_P = 2.5
 
-# Experience per newly-logged unique access point. A common WPA2 network is the
-# base. The bonuses reward variety and effort: open and legacy networks are
-# interesting, WPA3 is modern and less common, and a captured handshake is real
-# work. These are the "weighted by find" rule.
-XP_PER_AP = 5
+# Experience per newly-logged unique access point. A common WPA/WPA2 network is
+# the base; the bonuses reward variety and effort (open and legacy networks are
+# interesting, WPA3 is modern and less common). A captured handshake is real
+# work and worth a lot. Volume is high, so these stay small and the curve does
+# the escalating.
+XP_PER_AP = 4
 XP_BONUS = {
     'Open': 2,
-    'WEP': 3,
-    'WPA3': 4,
+    'WEP': 6,
+    'WPA3': 6,
     # WPA and WPA2 are the common case and take no bonus.
 }
-XP_PER_HANDSHAKE = 25
+XP_PER_HANDSHAKE = 40
 
 # Credits are the spendable currency. They are not experience: spending them
 # never lowers your level. Earned going forward only, never seeded from history.
-CREDITS_PER_AP = 1
-CREDITS_PER_HANDSHAKE = 3
+#
+# Access points pay experience, not credits: at thousands of APs per walk a
+# per-AP credit would trivialise the shop. Credits instead come in meaningful
+# chunks - a flat amount per level crossed, a bonus per handshake, and the
+# achievement rewards - so the shop stays a goal. CREDITS_PER_AP is kept as a
+# tunable (default 0); set it above zero if you want a live trickle while
+# scanning.
+CREDITS_PER_AP = 0
+CREDITS_PER_HANDSHAKE = 20
+CREDITS_PER_LEVEL = 10  # flat, per level crossed (not scaled by level)
 
-# Credits granted on reaching a new level, as a first reward hook. Item rewards
-# arrive later; this is here so level-ups already do something.
-CREDITS_PER_LEVEL = 5
-
-# The shop sells the wearable items. They live in items.py, the single registry
-# the shop, the inventory and the avatar all read, so adding an item there makes
-# it show up here (and everywhere) automatically - nothing to change in this file.
+# The shop sells the wearable items (items.py) and the achievement catalogue
+# lives in achievements.py. Both are single registries the shop, the phone page
+# and the Pager profile read, so adding an entry there makes it appear here (and
+# everywhere) automatically - nothing to change in this file.
 import items
+import achievements
 
 SHOP = items.CATALOG
 
@@ -62,15 +73,23 @@ def xp_to_reach(level):
     """Total experience needed to reach a level. Level 1 is 0."""
     if level <= 1:
         return 0
-    return XP_BASE * (level - 1) * level // 2
+    return int(round(XP_CURVE_A * (level - 1) ** XP_CURVE_P))
 
 
 def level_for_xp(total_xp):
-    """The level a total experience buys. The inverse of xp_to_reach."""
-    level = 1
-    while xp_to_reach(level + 1) <= total_xp:
-        level += 1
-    return level
+    """The level a total experience buys - the inverse of xp_to_reach.
+
+    Uses the closed-form inverse for an O(1) estimate, then nudges by at most a
+    step to stay exactly consistent with the (rounded) xp_to_reach, so the level
+    and the progress bar can never disagree at a boundary."""
+    if total_xp < xp_to_reach(2):
+        return 1
+    est = int(1 + (total_xp / XP_CURVE_A) ** (1.0 / XP_CURVE_P))
+    while xp_to_reach(est + 1) <= total_xp:
+        est += 1
+    while est > 1 and xp_to_reach(est) > total_xp:
+        est -= 1
+    return est
 
 
 def xp_bonus(encryption):
@@ -85,8 +104,9 @@ class Player:
         self.credits = 0
         self.inventory = []
         self.equipped = {}   # slot -> item_id
+        self.unlocked = []   # achievement ids earned, in unlock order
         self.counters = {'aps_awarded': 0, 'handshakes': 0, 'sessions': 0,
-                         'best_session_aps': 0}
+                         'best_session_aps': 0, 'credits_earned': 0}
         self.seeded = False
         self._last_save_at = 0.0
 
@@ -102,6 +122,7 @@ class Player:
             p.credits = int(data.get('credits', 0))
             p.inventory = list(data.get('inventory', []))
             p.equipped = dict(data.get('equipped', {}))
+            p.unlocked = list(data.get('unlocked', []))
             p.counters.update(data.get('counters', {}))
             p.seeded = bool(data.get('seeded', False))
         except FileNotFoundError:
@@ -119,6 +140,7 @@ class Player:
             'credits': self.credits,
             'inventory': self.inventory,
             'equipped': self.equipped,
+            'unlocked': self.unlocked,
             'counters': self.counters,
             'seeded': self.seeded,
         }
@@ -157,10 +179,19 @@ class Player:
 
     # Earning.
 
+    def _add_credits(self, n):
+        """Add credits and track the lifetime total (never falls when spending),
+        which the credit-milestone achievements measure."""
+        if n:
+            self.credits += n
+            self.counters['credits_earned'] = self.counters.get('credits_earned', 0) + n
+
     def seed_from_stats(self, stats):
         """Set the starting experience from access points already in the
         database, so a returning wardriver is not sent back to level 1. Runs
-        once. Credits are not seeded: those accrue only going forward."""
+        once. Credits are not seeded: those accrue only going forward. Any
+        achievements the history already satisfies are marked earned silently,
+        so a returning player is not flooded with unlocks and their rewards."""
         if self.seeded:
             return
         total = stats.get('total', 0)
@@ -180,6 +211,8 @@ class Player:
         self.counters['aps_awarded'] = total
         self.counters['handshakes'] = stats.get('handshakes', 0)
         self.seeded = True
+        # Mark already-earned achievements without granting rewards.
+        self.check_achievements(stats, reward=False)
         self.save()
 
     def award_aps(self, aps):
@@ -190,7 +223,7 @@ class Player:
         before = self.level
         for ap in aps:
             self.total_xp += XP_PER_AP + xp_bonus(ap.get('encryption'))
-            self.credits += CREDITS_PER_AP
+            self._add_credits(CREDITS_PER_AP)
         self.counters['aps_awarded'] += len(aps)
         return self._settle(before)
 
@@ -198,7 +231,7 @@ class Player:
         """Award the handshake bonus. Returns the new level if it rose."""
         before = self.level
         self.total_xp += XP_PER_HANDSHAKE
-        self.credits += CREDITS_PER_HANDSHAKE
+        self._add_credits(CREDITS_PER_HANDSHAKE)
         self.counters['handshakes'] += 1
         return self._settle(before)
 
@@ -214,13 +247,66 @@ class Player:
         level_after = self.level
         reached = None
         if level_after > level_before:
-            for lvl in range(level_before + 1, level_after + 1):
-                self.credits += CREDITS_PER_LEVEL * lvl
+            # Flat per level crossed - the fast early curve crosses many levels
+            # on a first walk, so scaling by level here would flood the economy.
+            self._add_credits(CREDITS_PER_LEVEL * (level_after - level_before))
             reached = level_after
             self.save()            # level-up: persist immediately
         else:
             self.save_throttled()  # frequent awards: throttle disk writes
         return reached
+
+    # Achievements.
+
+    def metrics(self, db_stats=None):
+        """The current value of every achievement metric, from the player's
+        counters and level and the database stats. See achievements.METRICS."""
+        s = db_stats or {}
+        opn, wep = s.get('open', 0), s.get('wep', 0)
+        wpa, wpa3 = s.get('wpa', 0), s.get('wpa3', 0)
+        return {
+            'aps': s.get('total', 0),
+            'open': opn, 'wep': wep, 'wpa': wpa, 'wpa3': wpa3,
+            'kinds': sum(1 for n in (opn, wep, wpa, wpa3) if n > 0),
+            # Unique APs with a handshake (the database count) is the true
+            # tally; fall back to the award counter if stats are absent.
+            'handshakes': s.get('handshakes', self.counters.get('handshakes', 0)),
+            'sessions': self.counters.get('sessions', 0),
+            'best_session': self.counters.get('best_session_aps', 0),
+            'level': self.level,
+            'credits_earned': self.counters.get('credits_earned', 0),
+        }
+
+    def check_achievements(self, db_stats=None, reward=True):
+        """Unlock any achievements now met. When `reward` is True (the default),
+        grant each one's XP and credits; that can raise the level or the earned-
+        credits total and unlock further achievements, so this resolves to a
+        fixpoint. On a seed pass (`reward=False`) it just records what history
+        already earned. Returns the newly unlocked achievement dicts, in
+        catalogue order, for announcing."""
+        unlocked = set(self.unlocked)
+        newly = []
+        while True:
+            met = achievements.newly_met(self.metrics(db_stats), unlocked)
+            if not met:
+                break
+            for a in met:
+                unlocked.add(a['id'])
+                self.unlocked.append(a['id'])
+                newly.append(a)
+                if reward:
+                    self.total_xp += a.get('xp', 0)
+                    self._add_credits(a.get('credits', 0))
+            if not reward:
+                break  # metrics cannot change without rewards; one pass suffices
+        if newly:
+            self.save()
+        return newly
+
+    @property
+    def title(self):
+        """The displayed title - the fanciest one unlocked, or '' if none yet."""
+        return achievements.title_for(self.unlocked)
 
     # Spending.
 
@@ -276,6 +362,23 @@ class Player:
             entry['equipped'] = self.equipped.get(item['slot']) == item['id']
             entry['affordable'] = self.credits >= item['cost'] and self.level >= item['level']
             shop.append(entry)
+
+        # Achievements: every one, with its progress toward the goal and whether
+        # it is unlocked, so the phone can show a full list with progress bars.
+        m = self.metrics(db_stats)
+        unlocked = set(self.unlocked)
+        ach = []
+        for a in achievements.CATALOG:
+            value = m.get(a['metric'], 0)
+            ach.append({
+                'id': a['id'], 'name': a['name'], 'desc': a['desc'],
+                'goal': a['goal'], 'value': min(value, a['goal']),
+                'pct': round(100 * min(value, a['goal']) / a['goal']) if a['goal'] else 100,
+                'unlocked': a['id'] in unlocked,
+                'xp': a.get('xp', 0), 'credits': a.get('credits', 0),
+                'title': a.get('title', ''),
+            })
+
         return {
             'level': prog['level'],
             'xp': self.total_xp,
@@ -283,9 +386,13 @@ class Player:
             'xp_span': prog['span'],
             'xp_pct': prog['pct'],
             'credits': self.credits,
+            'title': self.title,
             'inventory': list(self.inventory),
             'equipped': dict(self.equipped),
             'counters': dict(self.counters),
             'shop': shop,
+            'achievements': ach,
+            'achievements_unlocked': len(unlocked),
+            'achievements_total': len(achievements.CATALOG),
             'db_stats': db_stats or {},
         }
