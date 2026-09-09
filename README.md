@@ -85,7 +85,7 @@ Do these steps on the Pager:
 
 ```sh
 cd /root
-git clone https://github.com/YOURNAME/wardrivegotchi.git
+git clone https://github.com/HexOffender/wardrivegotchi.git
 cd wardrivegotchi
 ./install.sh
 ```
