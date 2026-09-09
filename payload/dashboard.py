@@ -35,7 +35,7 @@ class Dashboard:
         self.ORANGE = palette.rgb(pager, palette.ACCENT)
         self.CYAN = palette.rgb(pager, palette.ACCENT)
 
-    def render(self, stats, gps, elapsed, current_channel, interface, bands, scan_mode='active', battery=None, gps_enabled=True):
+    def render(self, stats, gps, elapsed, current_channel, scan_mode='active', battery=None, gps_enabled=True):
         """Draw one frame of the dashboard."""
         # Background
         blocks.background(self.pager, self.bg_image)
@@ -109,27 +109,10 @@ class Dashboard:
 
         self.pager.flip()
 
-    def _draw_stat(self, x, y, label, value, fs, label_color, value_color):
-        """Draw a label: value pair (staggered)."""
-        self.pager.draw_ttf(x, y, f"{label}:", label_color, self.font, fs)
-        lw = self.pager.ttf_width(f"{label}: ", self.font, fs)
-        self.pager.draw_ttf(x + lw, y, value, value_color, self.font, fs + 2)
-
     def _draw_label_value(self, label_x, val_x, y, label, value, fs, label_color, value_color):
         """Draw label and value at fixed column positions."""
         self.pager.draw_ttf(label_x, y, f"{label}:", label_color, self.font, fs)
         self.pager.draw_ttf(val_x, y, value, value_color, self.font, fs)
-
-    def _band_string(self, bands):
-        """Format active bands."""
-        parts = []
-        if bands.get('2.4'):
-            parts.append('2.4')
-        if bands.get('5'):
-            parts.append('5')
-        if bands.get('6'):
-            parts.append('6')
-        return '+'.join(parts) + 'GHz' if parts else 'No band'
 
     def _format_elapsed(self, seconds):
         """Format elapsed seconds as HH:MM:SS."""

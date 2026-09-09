@@ -855,14 +855,9 @@ class Wardrive:
                             last_frame_sig = sig
                             frame_wanted_at = 0.0
                             scan_mode = self.config.get('scan_mode', 'active')
-                            iface = (self.config['capture_interface']
-                                     if scan_mode == 'stealth' else self.config['scan_interface'])
-                            bands = {'2.4': self.config['scan_2_4ghz'],
-                                     '5': self.config['scan_5ghz'],
-                                     '6': self.config['scan_6ghz']}
                             self.dashboard.render(
                                 stats, gps, elapsed, self.current_channel,
-                                iface, bands, scan_mode, battery,
+                                scan_mode, battery,
                                 self.config.get('gps_enabled', True))
 
                     screen_timeout = self.config.get('screen_timeout', 60)
