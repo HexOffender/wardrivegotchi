@@ -119,6 +119,20 @@ def main():
     check(sdb.get_stats()['total'] == 7 and sdb.get_stats()['handshakes'] == 1,
           "running stats values are correct")
 
+    # clear() must wipe the table AND re-seed the O(1) running stats, so the
+    # dashboard does not keep showing pre-clear totals (the Data-menu wipe path).
+    sdb.clear()
+    check(sdb.conn.execute("SELECT COUNT(*) FROM access_points").fetchone()[0] == 0,
+          "clear() empties the table")
+    check(sdb.get_stats() == sdb._compute_stats(),
+          "clear() re-seeds running stats to match a fresh COUNT")
+    check(sdb.get_stats()['total'] == 0 and sdb.get_stats()['handshakes'] == 0,
+          "stats are all zero after clear()")
+    # And the running counts stay correct as new APs arrive post-clear.
+    put("Z1", "WPA2"); put("Z2", "Open")
+    check(sdb.get_stats() == sdb._compute_stats(),
+          "running stats match a fresh COUNT after clear() + new adds")
+
     print("\nTOTAL FAILURES: %d" % fails)
     sys.exit(1 if fails else 0)
 

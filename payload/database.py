@@ -222,6 +222,17 @@ class Database:
         'wpa2'; the phone status/profile read 'wpa')."""
         return dict(self._stats)
 
+    def clear(self):
+        """Delete every access point and re-seed the running stats. Used by the
+        'Clear Database' / 'Clear All Data' menu actions. Because get_stats() is
+        now O(1) off in-memory counters, deleting rows out from under them (as
+        the menu used to, via its own connection) would leave the dashboard
+        showing pre-clear totals until restart; re-seeding here keeps them
+        truthful."""
+        self.conn.execute("DELETE FROM access_points")
+        self.conn.commit()
+        self._stats = self._compute_stats()
+
     def _compute_stats(self):
         """Compute the stats from the table once (the seed for the running
         counts). O(N) - called only when a connection opens, never per frame."""

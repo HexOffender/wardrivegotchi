@@ -16,10 +16,14 @@ from config import BG_IMAGE, SCREEN_W, SCREEN_H, FONT_MENU, FONT_TITLE, save_con
 class SettingsMenu:
     """LCD settings menu with grouped submenus."""
 
-    def __init__(self, pager, config, gps_reader=None):
+    def __init__(self, pager, config, gps_reader=None, db=None):
         self.pager = pager
         self.config = config
         self.gps_reader = gps_reader
+        # The live Database the main loop owns. Clearing data through it (rather
+        # than a throwaway connection) keeps the O(1) running stats in sync, so
+        # the dashboard reflects a wipe immediately instead of at next restart.
+        self.db = db
         self.font = FONT_MENU
         self.title_font = FONT_TITLE
         # The paper background. The active pager theme is dark and this
@@ -453,8 +457,7 @@ class SettingsMenu:
 
     def _show_data_settings(self):
         """Data management — clear handshakes, wigle files, database, all."""
-        from config import EXPORT_DIR, CAPTURE_DIR, DB_PATH
-        import shutil
+        from config import EXPORT_DIR, CAPTURE_DIR
 
         def _count_files(directory, ext):
             try:
@@ -493,28 +496,16 @@ class SettingsMenu:
                     self._show_message("Hashcat files cleared")
             elif action == 'clear_db':
                 if self._confirm("Clear database?"):
-                    try:
-                        import sqlite3
-                        conn = sqlite3.connect(DB_PATH)
-                        conn.execute("DELETE FROM access_points")
-                        conn.commit()
-                        conn.close()
+                    if self._clear_database():
                         self._show_message("Database cleared")
-                    except Exception:
+                    else:
                         self._show_message("Failed to clear DB")
             elif action == 'clear_all':
                 if self._confirm("Clear ALL data?"):
                     self._clear_dir(EXPORT_DIR, '.csv')
                     self._clear_dir(CAPTURE_DIR, '.pcap')
                     self._clear_dir(CAPTURE_DIR, '.22000')
-                    try:
-                        import sqlite3
-                        conn = sqlite3.connect(DB_PATH)
-                        conn.execute("DELETE FROM access_points")
-                        conn.commit()
-                        conn.close()
-                    except Exception:
-                        pass
+                    self._clear_database()
                     self._show_message("All data cleared")
             return None
 
@@ -558,6 +549,28 @@ class SettingsMenu:
                     os.remove(os.path.join(directory, f))
         except Exception:
             pass
+
+    def _clear_database(self):
+        """Delete all access points. Prefer the live Database the main loop owns
+        so its O(1) running stats are re-seeded (otherwise the dashboard keeps
+        showing pre-clear totals until restart); fall back to a throwaway
+        connection when the menu was constructed without one."""
+        if self.db is not None:
+            try:
+                self.db.clear()
+                return True
+            except Exception:
+                return False
+        from config import DB_PATH
+        try:
+            import sqlite3
+            conn = sqlite3.connect(DB_PATH)
+            conn.execute("DELETE FROM access_points")
+            conn.commit()
+            conn.close()
+            return True
+        except Exception:
+            return False
 
     def _show_device_settings(self):
         """Device settings — web server, sound, brightness, screen timeout."""

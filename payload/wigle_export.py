@@ -56,6 +56,15 @@ class WigleWriter:
         if not self.filepath:
             return 0
 
+        # If the session file was removed out from under us (e.g. the user
+        # cleared Wigle files from the Data menu mid-scan), appending would
+        # silently recreate it in 'a' mode with no WigleWifi/column header -
+        # a malformed CSV that Wigle rejects. Start a fresh, valid session
+        # instead; start_session() also resets the de-dup set so the new file
+        # gets a clean header and the APs seen from here on.
+        if not os.path.isfile(self.filepath):
+            self.start_session()
+
         new_rows = []
         for ap in aps:
             bssid = ap['bssid']

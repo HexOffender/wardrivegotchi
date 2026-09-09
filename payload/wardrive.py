@@ -847,7 +847,7 @@ class Wardrive:
                     entered = True
                 elif pressed & self.pager.BTN_B:
                     # Scan keeps running in background
-                    settings = SettingsMenu(self.pager, self.config, self.gps_reader)
+                    settings = SettingsMenu(self.pager, self.config, self.gps_reader, db=self.db)
                     result = settings.show(export_callback=self._export_callback,
                                            upload_callback=self._upload_callback)
                     if result == '__exit__':
