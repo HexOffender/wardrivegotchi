@@ -17,7 +17,6 @@ own.
 
 import json
 import os
-import threading
 import time
 
 SCHEMA = 1
@@ -82,7 +81,6 @@ def xp_bonus(encryption):
 class Player:
     def __init__(self, path):
         self.path = path
-        self._lock = threading.Lock()
         self.total_xp = 0
         self.credits = 0
         self.inventory = []

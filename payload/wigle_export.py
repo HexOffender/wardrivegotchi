@@ -210,14 +210,16 @@ def upload_to_wigle(filepath, api_name, api_token):
 
 
 def _channel_to_freq(channel):
-    """Convert WiFi channel to frequency in MHz."""
-    if 1 <= channel <= 14:
-        return 2407 + channel * 5 if channel <= 13 else 2484
+    """Best-effort WiFi channel -> MHz. Only a fallback for the rare scan that
+    reports no frequency; the scanner normally supplies the real one. Channel
+    numbers alone cannot distinguish 2.4 from 6 GHz, so unknown channels return
+    0 rather than a wrong value."""
+    if 1 <= channel <= 13:
+        return 2407 + channel * 5
+    if channel == 14:
+        return 2484
     if 36 <= channel <= 177:
         return 5000 + channel * 5
-    if channel >= 1 and channel <= 233:
-        # 6GHz
-        return 5950 + channel * 5
     return 0
 
 

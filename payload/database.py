@@ -261,14 +261,6 @@ class Database:
         elif encryption == 'WPA3':
             s['wpa3'] += delta
 
-    def get_new_count_since(self, timestamp):
-        """Count APs first seen after timestamp."""
-        row = self.conn.execute(
-            'SELECT COUNT(*) FROM access_points WHERE first_seen > ?',
-            (timestamp,)
-        ).fetchone()
-        return row[0] or 0
-
     def get_all_aps(self):
         """Get all APs for export."""
         cursor = self.conn.execute(
