@@ -59,6 +59,11 @@ def main():
     f = frame(8, 0x02, STA, AP, STA, EAPOL_ETHERTYPE, qos=True, snap=b'\x00\x00\x00\x00\x00\x00')
     check(eapol_bssid(f) is None, "EAPOL EtherType without a SNAP header is ignored")
 
+    # A Protected (encrypted) data frame is skipped: the 4-way handshake is
+    # never encrypted, and an encrypted payload can't be a readable SNAP header.
+    f = frame(8, 0x02 | 0x40, STA, AP, STA, EAPOL_ETHERTYPE, qos=True)
+    check(eapol_bssid(f) is None, "Protected (encrypted) data frame is skipped")
+
     # A management (beacon) frame is not data -> ignored.
     beacon = RADIOTAP + bytes([0x80, 0x00]) + b'\x00\x00' + STA + AP + AP + b'\x00\x00'
     check(eapol_bssid(beacon) is None, "management frame is ignored")

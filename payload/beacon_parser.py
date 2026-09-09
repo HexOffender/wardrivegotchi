@@ -163,6 +163,12 @@ def eapol_bssid(packet):
     subtype = (fc0 >> 4) & 0x0f
     if subtype in _NULL_DATA_SUBTYPES:
         return None
+    # The 4-way handshake is sent before the pairwise key is installed, so its
+    # EAPOL frames are never encrypted. On a WPA network almost every data frame
+    # IS encrypted (Protected bit set); skipping them here avoids parsing a large
+    # volume of ciphertext whose payload could never be a readable SNAP header.
+    if fc1 & 0x40:
+        return None
 
     to_ds = fc1 & 0x01
     from_ds = (fc1 >> 1) & 0x01
