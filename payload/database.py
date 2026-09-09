@@ -24,6 +24,9 @@ class Database:
         # background export/upload - holds the write lock.
         self.conn.execute("PRAGMA busy_timeout=5000")
         self._create_tables()
+        # Running stats so the dashboard/phone never re-scan the whole table.
+        # Seeded once; kept in sync by upsert_ap / correlate / mark_handshake.
+        self._stats = self._compute_stats()
 
     def _create_tables(self):
         self.conn.execute('''
@@ -82,7 +85,7 @@ class Database:
         bssid = ap['bssid']
 
         existing = self.conn.execute(
-            'SELECT signal, lat FROM access_points WHERE bssid = ?', (bssid,)
+            'SELECT signal, lat, encryption FROM access_points WHERE bssid = ?', (bssid,)
         ).fetchone()
         is_new = existing is None
 
@@ -158,6 +161,15 @@ class Database:
                     'wlat_sum=?, wlon_sum=?, walt_sum=? WHERE bssid=?',
                     (w, lat * w, lon * w, alt * w, bssid))
 
+        # Keep the running stats in sync (O(1)).
+        new_enc = ap['encryption']
+        if is_new:
+            self._stats['total'] += 1
+            self._bump_enc(new_enc, 1)
+        elif existing[2] != new_enc:
+            self._bump_enc(existing[2], -1)
+            self._bump_enc(new_enc, 1)
+
         if commit:
             self.conn.commit()
         return is_new
@@ -171,6 +183,8 @@ class Database:
         self.conn.execute(
             'UPDATE access_points SET handshake=1 WHERE bssid=?', (bssid,))
         self.conn.commit()
+        if not already:
+            self._stats['handshakes'] += 1
         return not already
 
     def correlate_open_bssids(self, limit=300):
@@ -195,13 +209,22 @@ class Database:
                     "UPDATE access_points SET encryption=?, auth_mode=? WHERE bssid=?",
                     (sibling[0], sibling[1], bssid)
                 )
+                self._bump_enc('Open', -1)
+                self._bump_enc(sibling[0], 1)
                 changed += 1
         if changed:
             self.conn.commit()
         return changed
 
     def get_stats(self):
-        """Get aggregate stats for the dashboard."""
+        """Aggregate stats for the dashboard - O(1), kept in sync incrementally.
+        'wpa' and 'wpa2' both carry the combined WPA+WPA2 total (the Pager reads
+        'wpa2'; the phone status/profile read 'wpa')."""
+        return dict(self._stats)
+
+    def _compute_stats(self):
+        """Compute the stats from the table once (the seed for the running
+        counts). O(N) - called only when a connection opens, never per frame."""
         row = self.conn.execute('''
             SELECT
                 COUNT(*) as total,
@@ -212,10 +235,6 @@ class Database:
                 SUM(handshake)
             FROM access_points
         ''').fetchone()
-        # The SQL counts WPA and WPA2 together. Expose that under both names:
-        # the Pager dashboard reads 'wpa2', while the phone status, the profile
-        # seeder and the phone page read 'wpa'. Keeping both in sync here stops
-        # them from disagreeing (the phone's WPA chip used to always read 0).
         wpa = row[3] or 0
         return {
             'total': row[0] or 0,
@@ -226,6 +245,21 @@ class Database:
             'wpa3': row[4] or 0,
             'handshakes': row[5] or 0,
         }
+
+    def _bump_enc(self, encryption, delta):
+        """Adjust the encryption buckets when a row is added or reclassified.
+        WPA and WPA2 share the combined 'wpa'/'wpa2' counters; Unknown/other
+        encryptions count toward 'total' only."""
+        s = self._stats
+        if encryption == 'Open':
+            s['open'] += delta
+        elif encryption == 'WEP':
+            s['wep'] += delta
+        elif encryption in ('WPA', 'WPA2'):
+            s['wpa'] += delta
+            s['wpa2'] += delta
+        elif encryption == 'WPA3':
+            s['wpa3'] += delta
 
     def get_new_count_since(self, timestamp):
         """Count APs first seen after timestamp."""

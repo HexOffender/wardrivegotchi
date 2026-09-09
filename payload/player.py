@@ -18,6 +18,7 @@ own.
 import json
 import os
 import threading
+import time
 
 SCHEMA = 1
 
@@ -89,6 +90,7 @@ class Player:
         self.counters = {'aps_awarded': 0, 'handshakes': 0, 'sessions': 0,
                          'best_session_aps': 0}
         self.seeded = False
+        self._last_save_at = 0.0
 
     # Loading and saving.
 
@@ -128,8 +130,16 @@ class Player:
             with open(tmp, 'w') as f:
                 json.dump(data, f, indent=2)
             os.replace(tmp, self.path)  # atomic, so a crash cannot truncate it
+            self._last_save_at = time.time()
         except Exception:
             pass
+
+    def save_throttled(self, min_interval=5.0):
+        """Save at most once per min_interval - for the frequent per-scan awards,
+        so dense scanning does not rewrite player.json every batch. Level-ups and
+        purchases still save immediately."""
+        if time.time() - self._last_save_at >= min_interval:
+            self.save()
 
     # Derived level and progress.
 
@@ -209,7 +219,9 @@ class Player:
             for lvl in range(level_before + 1, level_after + 1):
                 self.credits += CREDITS_PER_LEVEL * lvl
             reached = level_after
-        self.save()
+            self.save()            # level-up: persist immediately
+        else:
+            self.save_throttled()  # frequent awards: throttle disk writes
         return reached
 
     # Spending.

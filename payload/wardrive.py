@@ -71,7 +71,7 @@ class Wardrive:
         # Shared state
         self.gps_state = GpsState(stale_secs=self.config.get('gps_stale_secs', 8))
         self.stop_event = threading.Event()
-        self.scan_queue = queue.Queue()
+        self.scan_queue = queue.Queue(maxsize=256)  # safety valve against runaway backlog
         self.capture_queue = queue.Queue()
 
         # Threads (created on start)

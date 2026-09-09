@@ -103,6 +103,22 @@ def main():
     check(u.conn.execute("SELECT obs_count FROM access_points WHERE bssid='U1'").fetchone()[0] == 5,
           "reopen does not reset aggregates when a column is added")
 
+    # ---- running (O(1)) stats stay in sync with a fresh table COUNT ----
+    sdb = Database(os.path.join(tempfile.mkdtemp(), "s.db"))
+    def put(b, enc, ssid='x', sig=-50):
+        sdb.upsert_ap({'bssid': b, 'ssid': ssid, 'channel': 6, 'signal': sig, 'encryption': enc},
+                      G(45.0, -75.0, 0.0, 2))
+    put("S1", "WPA2"); put("S2", "Open"); put("S3", "WEP"); put("S4", "WPA3"); put("S5", "WPA")
+    put("S2", "WPA2")                         # reclassify Open -> WPA2
+    sdb.mark_handshake("S1"); sdb.mark_handshake("S1")   # only the first counts
+    put("CC:CC:CC:CC:CC:01", "Open", ssid='')  # hidden, will be correlated
+    put("CC:CC:CC:CC:CC:02", "WPA2")           # its sibling
+    sdb.correlate_open_bssids()
+    check(sdb.get_stats() == sdb._compute_stats(),
+          "running stats match a fresh COUNT after add/reclassify/handshake/correlate")
+    check(sdb.get_stats()['total'] == 7 and sdb.get_stats()['handshakes'] == 1,
+          "running stats values are correct")
+
     print("\nTOTAL FAILURES: %d" % fails)
     sys.exit(1 if fails else 0)
 
