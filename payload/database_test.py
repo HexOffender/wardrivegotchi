@@ -133,6 +133,11 @@ def main():
     check(sdb.get_stats() == sdb._compute_stats(),
           "running stats match a fresh COUNT after clear() + new adds")
 
+    # checkpoint() folds the WAL back in; it must be safe and keep data intact.
+    sdb.checkpoint()
+    check(sdb.get_stats() == sdb._compute_stats() and sdb.get_stats()['total'] == 2,
+          "checkpoint() keeps data and stats intact")
+
     print("\nTOTAL FAILURES: %d" % fails)
     sys.exit(1 if fails else 0)
 

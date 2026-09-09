@@ -330,5 +330,20 @@ class Database:
         self.conn.commit()
         return len(bssids)
 
+    def checkpoint(self):
+        """Fold the write-ahead log back into the main database file and truncate
+        it. In WAL mode the -wal file grows as rows are written and is only
+        reclaimed by a checkpoint; a periodic reader (the phone's /api/stats on
+        its own connection) can keep SQLite's automatic passive checkpoint from
+        ever truncating it, so over a long drive the WAL can grow large. Calling
+        this on an interval keeps it small, so closing the database (e.g. when a
+        new session archives it) never has to checkpoint a huge WAL to slow flash
+        in one go - which froze the UI for ~30s. Best-effort: a busy checkpoint
+        just does what it can and is retried next interval."""
+        try:
+            self.conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            pass
+
     def close(self):
         self.conn.close()

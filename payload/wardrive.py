@@ -40,9 +40,17 @@ import profile_ui
 STATS_INTERVAL = 3.0
 CORRELATE_INTERVAL = 15.0
 PUBLISH_INTERVAL = 1.0
+# Fold the SQLite write-ahead log back into the database on this cadence so it
+# never grows large. A large WAL made closing the database (on New Session)
+# checkpoint everything at once and freeze the UI for ~30s on slow flash.
+CHECKPOINT_INTERVAL = 30.0
 # Dashboard processing/redraw cadence. Input is polled far more often than this
 # (see run()), so a slower redraw does not hurt responsiveness - it helps it.
 PROCESS_INTERVAL = 0.2
+# A redraw is deferred while buttons are pending (so a burst of taps is handled
+# first), but never longer than this - otherwise a stuck "input pending" state
+# would starve the screen and look like a freeze while scanning runs on.
+INPUT_DEFER_MAX = 0.4
 
 # Recent access points sent to the phone for its radar and network list. Capped
 # and cached so the status snapshot stays small and the database is not queried
@@ -105,6 +113,7 @@ class Wardrive:
         self._stats_at = 0.0
         self._correlate_at = 0.0
         self._publish_at = 0.0
+        self._checkpoint_at = 0.0
         self._recent_aps_cache = None
         self._recent_aps_at = 0.0
         self._bg_busy = False  # a background export/upload is running
@@ -675,7 +684,15 @@ class Wardrive:
                 selected = 1 - selected
             elif button & self.pager.BTN_A:
                 if selected == 1:
-                    # New session — archive DB, start new wigle file
+                    # New session — archive DB, start new wigle file. Show
+                    # feedback first: archiving closes the database, which can
+                    # take a moment, and a frozen menu looks like a hang.
+                    blocks.background(self.pager, self.dashboard.bg_image)
+                    msg = "Starting new session..."
+                    tw = self.pager.ttf_width(msg, FONT_MENU, 18)
+                    self.pager.draw_ttf((SCREEN_W - tw) // 2, 110, msg,
+                                        palette.rgb(self.pager, palette.INK), FONT_MENU, 18)
+                    self.pager.flip()
                     self._archive_session()
                     self.wigle_writer.start_session()
                 else:
@@ -695,13 +712,27 @@ class Wardrive:
         # Finalize the current track for the archived session.
         self.gpx_writer.close()
 
-        # Close current DB
+        # Fold the WAL into the .db before closing, so the archived file is
+        # complete and there is no leftover -wal to replay. With the periodic
+        # checkpoint keeping the log small this is quick; without it, a long
+        # session's WAL is what made this step freeze the UI.
+        self.db.checkpoint()
         self.db.close()
 
         # Rename DB
         if os.path.isfile(DB_PATH):
             archive_path = DB_PATH.replace('.db', f'_{timestamp}.db')
             os.rename(DB_PATH, archive_path)
+
+        # Drop any -wal/-shm the closed database left behind. A stale WAL sitting
+        # next to the new, empty file would be replayed into it, so the "new"
+        # session would silently start with all the old access points.
+        for ext in ('-wal', '-shm'):
+            try:
+                if os.path.isfile(DB_PATH + ext):
+                    os.remove(DB_PATH + ext)
+            except OSError:
+                pass
 
         # Rename latest CSV
         latest_csv = os.path.join(EXPORT_DIR, 'wardrive_latest.csv')
@@ -729,9 +760,20 @@ class Wardrive:
         # Let the dashboard come up before the first (heavier) correlation pass.
         self._correlate_at = time.time()
 
+        # Drop the button that confirmed the session menu so a lingering press or
+        # release does not keep the first frames from drawing, and make sure the
+        # screen is on with a fresh activity timer.
+        try:
+            self.pager.clear_input_events()
+        except Exception:
+            pass
+        self.screen_off = False
+        self.last_activity = time.time()
+
         try:
             last_process = 0.0
             last_frame_sig = None
+            frame_wanted_at = 0.0
             while True:
                 now = time.time()
 
@@ -755,6 +797,11 @@ class Wardrive:
                         if now - self._correlate_at > CORRELATE_INTERVAL:
                             self.db.correlate_open_bssids()
                             self._correlate_at = now
+                        if now - self._checkpoint_at > CHECKPOINT_INTERVAL:
+                            # Keep the WAL small so New Session's archive close
+                            # never has to checkpoint a huge log at once.
+                            self.db.checkpoint()
+                            self._checkpoint_at = now
                         self._geiger_sound(new_aps)
 
                     stats = self._get_stats_cached()
@@ -792,8 +839,21 @@ class Wardrive:
                             input_pending = self.pager.has_input_events()
                         except Exception:
                             input_pending = False
-                        if sig != last_frame_sig and not input_pending:
+                        if sig != last_frame_sig:
+                            # Something changed. Defer briefly while buttons are
+                            # pending so taps are handled first, but force the
+                            # draw past INPUT_DEFER_MAX so the screen can never be
+                            # starved (a stuck pending state used to freeze it).
+                            if frame_wanted_at == 0.0:
+                                frame_wanted_at = now
+                            draw_now = (not input_pending
+                                        or now - frame_wanted_at >= INPUT_DEFER_MAX)
+                        else:
+                            frame_wanted_at = 0.0
+                            draw_now = False
+                        if draw_now:
                             last_frame_sig = sig
+                            frame_wanted_at = 0.0
                             scan_mode = self.config.get('scan_mode', 'active')
                             iface = (self.config['capture_interface']
                                      if scan_mode == 'stealth' else self.config['scan_interface'])
