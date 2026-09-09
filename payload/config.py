@@ -88,6 +88,9 @@ DEFAULTS = {
     'geiger_sound': True,
     'brightness': 80,
     'screen_timeout': 60,  # seconds, 0 = never
+    # Backlight level when the screen times out. NEVER 0 - some Pager panels
+    # read 0 as full brightness; 1 is the dimmest that still means "off".
+    'screen_off_brightness': 1,
     'web_server': True,
     'web_port': 8080,
     # Phone control. Empty disables it, thus a fresh install accepts no remote

@@ -37,8 +37,8 @@ import profile_ui
 # the hidden-BSSID correlation and republishing the phone snapshot on every frame
 # is what makes the dashboard and menus lag as the database grows. These refresh
 # on a short interval instead, which is indistinguishable to the eye.
-STATS_INTERVAL = 1.5
-CORRELATE_INTERVAL = 5.0
+STATS_INTERVAL = 3.0
+CORRELATE_INTERVAL = 15.0
 PUBLISH_INTERVAL = 1.0
 # Dashboard processing/redraw cadence. Input is polled far more often than this
 # (see run()), so a slower redraw does not hurt responsiveness - it helps it.
@@ -230,8 +230,12 @@ class Wardrive:
             self.capture_thread.join(timeout=3)
 
     def _process_scan_results(self):
-        """Drain scan queue and update database."""
+        """Drain the scan queue into the database in one transaction, then append
+        only the newly-found access points to the live Wigle CSV. Committing per
+        row and reloading the whole table here used to stall the main loop (and
+        the buttons) during scanning."""
         new_count = 0
+        fresh_bssids = []
         gps = self.gps_state.copy()
 
         while not self.scan_queue.empty():
@@ -242,14 +246,21 @@ class Wardrive:
 
             fresh = []
             for ap in aps:
-                if self.db.upsert_ap(ap, gps):
+                if self.db.upsert_ap(ap, gps, commit=False):
                     fresh.append(ap)
+                    fresh_bssids.append(ap['bssid'])
                 if ap.get('channel'):
                     self.current_channel = ap['channel']
             new_count += len(fresh)
             reached = self.player.award_aps(fresh)
             if reached:
                 self._announce_level(reached)
+
+        self.db.commit()  # one commit for the whole drain, not one per AP
+
+        # Append only the freshly-added rows, not the entire table.
+        if fresh_bssids:
+            self.wigle_writer.append_aps(self.db.get_aps(fresh_bssids))
 
         self.new_ap_count = new_count
         return new_count
@@ -269,14 +280,12 @@ class Wardrive:
                 break
 
     def _handshake_sound(self):
-        """Play a distinct sound when a handshake is captured."""
+        """A distinct, non-blocking chirp when a handshake is captured (higher
+        and longer than a geiger click). No sleeps, so it never stalls the loop."""
         if not self.config.get('geiger_sound', True):
             return
         try:
-            # Rising tone — clearly different from geiger clicks
-            for freq in [800, 1000, 1200, 1500]:
-                self.pager.beep(freq, 50)
-                time.sleep(0.05)
+            self.pager.beep(1800, 90)
         except Exception:
             pass
 
@@ -409,21 +418,19 @@ class Wardrive:
         return None
 
     def _geiger_sound(self, new_count):
-        """Play geiger counter clicks based on new AP count."""
-        if not self.config.get('geiger_sound', True):
+        """A short, non-blocking click for new APs, rate-limited. beep() returns
+        immediately - the old version slept between clicks, which stalled the
+        main loop (and the buttons) while a scan found a lot at once."""
+        if not self.config.get('geiger_sound', True) or new_count <= 0:
             return
-        if new_count <= 0:
+        now = time.time()
+        if now - getattr(self, '_last_geiger_at', 0) < 0.3:
             return
-
-        # More new APs = more rapid clicks
-        clicks = min(new_count, 10)  # Cap at 10 clicks
-        for i in range(clicks):
-            try:
-                freq = 600 + (i * 50)  # Slightly varying pitch
-                self.pager.beep(freq, 15)  # Very short click
-                time.sleep(0.05)
-            except Exception:
-                break
+        self._last_geiger_at = now
+        try:
+            self.pager.beep(700, 20)
+        except Exception:
+            pass
 
     # Scan transitions. The Pager menu and the phone control both call these,
     # so a change to how a scan starts or stops happens in one place.
@@ -615,6 +622,13 @@ class Wardrive:
         selected = 0  # 0=Continue, 1=New Session
         items = [f"Continue ({existing} APs)", "New Session"]
 
+        # Drop any button still queued from launching the payload, so the menu
+        # waits for a real choice instead of instantly confirming Continue.
+        try:
+            self.pager.clear_input_events()
+        except Exception:
+            pass
+
         while True:
             # Draw
             blocks.background(self.pager, self.dashboard.bg_image)
@@ -680,6 +694,10 @@ class Wardrive:
 
     def run(self):
         """Main run loop."""
+        try:
+            self.pager.clear_input_events()  # drop the button that launched us
+        except Exception:
+            pass
         self._ask_session()
 
         # If no wigle file started yet (first run with empty DB), start one
@@ -689,6 +707,8 @@ class Wardrive:
         # Start scanning immediately
         self.scan_state = 'scanning'
         self._start_threads()
+        # Let the dashboard come up before the first (heavier) correlation pass.
+        self._correlate_at = time.time()
 
         try:
             last_process = 0.0
@@ -716,11 +736,9 @@ class Wardrive:
                         if now - self._correlate_at > CORRELATE_INTERVAL:
                             self.db.correlate_open_bssids()
                             self._correlate_at = now
-                        if new_aps > 0:
-                            self.wigle_writer.append_aps(self.db.get_all_aps())
                         self._geiger_sound(new_aps)
 
-                    stats = self._get_stats_cached(force=new_aps > 0)
+                    stats = self._get_stats_cached()
                     gps = self.gps_state.copy()
 
                     # Drive track. fix_mode is already stale-adjusted by copy().
@@ -751,7 +769,11 @@ class Wardrive:
                                round(gps.lat, 4), round(gps.lon, 4), battery,
                                self.config['scan_2_4ghz'], self.config['scan_5ghz'],
                                self.config['scan_6ghz'])
-                        if sig != last_frame_sig:
+                        try:
+                            input_pending = self.pager.has_input_events()
+                        except Exception:
+                            input_pending = False
+                        if sig != last_frame_sig and not input_pending:
                             last_frame_sig = sig
                             scan_mode = self.config.get('scan_mode', 'active')
                             iface = (self.config['capture_interface']
@@ -767,7 +789,10 @@ class Wardrive:
                     screen_timeout = self.config.get('screen_timeout', 60)
                     if (screen_timeout > 0 and not self.screen_off
                             and now - self.last_activity > screen_timeout):
-                        self.pager.set_brightness(0)
+                        try:
+                            self.pager.screen_off()
+                        except Exception:
+                            self.pager.set_brightness(self.config.get('screen_off_brightness', 1))
                         self.screen_off = True
 
                 # Input, every iteration, so short taps are not missed.
@@ -778,10 +803,18 @@ class Wardrive:
 
                 if self.screen_off:
                     # The first press only wakes the screen.
+                    try:
+                        self.pager.screen_on()
+                    except Exception:
+                        pass
                     self.pager.set_brightness(self.config.get('brightness', 80))
                     self.screen_off = False
                     self.last_activity = time.time()
                     last_frame_sig = None
+                    try:
+                        self.pager.clear_input_events()
+                    except Exception:
+                        pass
                     continue
 
                 self.last_activity = time.time()
@@ -811,9 +844,10 @@ class Wardrive:
                     self.pager.set_brightness(self.config.get('brightness', 80))
                     self.last_activity = time.time()
                     last_frame_sig = None
-                    for _ in range(3):
-                        self.pager.poll_input()
-                        time.sleep(0.05)
+                    try:
+                        self.pager.clear_input_events()
+                    except Exception:
+                        pass
 
         except KeyboardInterrupt:
             pass

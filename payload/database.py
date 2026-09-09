@@ -73,7 +73,7 @@ class Database:
                           'ON access_points(last_seen)')
         self.conn.commit()
 
-    def upsert_ap(self, ap, gps):
+    def upsert_ap(self, ap, gps, commit=True):
         """Insert or update an AP record with GPS data."""
         now = datetime.utcnow().isoformat()
         bssid = ap['bssid']
@@ -155,7 +155,8 @@ class Database:
                     'wlat_sum=?, wlon_sum=?, walt_sum=? WHERE bssid=?',
                     (w, lat * w, lon * w, alt * w, bssid))
 
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return is_new
 
     def mark_handshake(self, bssid):
@@ -169,24 +170,32 @@ class Database:
         self.conn.commit()
         return not already
 
-    def correlate_open_bssids(self):
-        """For hidden BSSIDs with no encryption, check if a sibling BSSID
-        (same first 5 octets) has encryption and inherit it."""
+    def correlate_open_bssids(self, limit=300):
+        """Hidden 'Open' APs inherit encryption from a same-OUI sibling. Bounded
+        per call, and the sibling lookup uses GLOB (a prefix pattern SQLite can
+        serve from the bssid primary-key index) instead of a non-indexed LIKE,
+        so it does not stall the main loop as the database grows. The old version
+        scanned the whole table per hidden AP and could freeze it for seconds."""
         open_aps = self.conn.execute(
-            "SELECT bssid FROM access_points WHERE encryption='Open' AND ssid=''"
+            "SELECT bssid FROM access_points WHERE encryption='Open' AND ssid='' LIMIT ?",
+            (limit,)
         ).fetchall()
+        changed = 0
         for (bssid,) in open_aps:
-            prefix = bssid[:14]  # First 5 octets "XX:XX:XX:XX:XX"
             sibling = self.conn.execute(
-                "SELECT encryption, auth_mode FROM access_points WHERE bssid LIKE ? AND encryption != 'Open' LIMIT 1",
-                (prefix + '%',)
+                "SELECT encryption, auth_mode FROM access_points "
+                "WHERE bssid GLOB ? AND encryption != 'Open' LIMIT 1",
+                (bssid[:14] + '*',)
             ).fetchone()
             if sibling:
                 self.conn.execute(
                     "UPDATE access_points SET encryption=?, auth_mode=? WHERE bssid=?",
                     (sibling[0], sibling[1], bssid)
                 )
-        self.conn.commit()
+                changed += 1
+        if changed:
+            self.conn.commit()
+        return changed
 
     def get_stats(self):
         """Get aggregate stats for the dashboard."""
@@ -229,6 +238,24 @@ class Database:
             'SELECT * FROM access_points ORDER BY first_seen')
         columns = [d[0] for d in cursor.description]
         return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def get_aps(self, bssids):
+        """Full rows for the given BSSIDs - used to append just the newly-found
+        access points to the live Wigle CSV without reloading the whole table."""
+        bssids = list(bssids)
+        out = []
+        for i in range(0, len(bssids), 400):
+            chunk = bssids[i:i + 400]
+            ph = ','.join('?' * len(chunk))
+            cur = self.conn.execute(
+                'SELECT * FROM access_points WHERE bssid IN (%s)' % ph, chunk)
+            cols = [d[0] for d in cur.description]
+            out.extend(dict(zip(cols, row)) for row in cur.fetchall())
+        return out
+
+    def commit(self):
+        """Commit a batch of writes made with commit=False."""
+        self.conn.commit()
 
     def get_recent_aps(self, limit=150):
         """Recent APs for the phone's radar and network list, newest first.
