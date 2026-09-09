@@ -7,6 +7,7 @@ import struct
 
 # 802.11 frame types
 FRAME_TYPE_MGMT = 0
+FRAME_TYPE_DATA = 2
 FRAME_SUBTYPE_BEACON = 8
 FRAME_SUBTYPE_PROBE_RESP = 5
 
@@ -125,6 +126,69 @@ def parse_beacon(frame_bytes):
         'encryption': encryption,
         'auth_mode': auth_string,
     }
+
+
+# EAPOL (the WPA handshake) rides inside an 802.11 data frame, behind an
+# LLC/SNAP header whose EtherType is 0x888E. tcpdump's `ether proto 0x888e`
+# primitive does not reach through 802.11 + SNAP on every libpcap build (the
+# Pineapple's is one where it matches nothing), so handshakes are identified
+# here from the raw frame bytes instead of trusting the capture filter.
+EAPOL_ETHERTYPE = 0x888E
+_SNAP_LLC_PREFIX = b'\xaa\xaa\x03\x00\x00\x00'
+# Data subtypes that carry no payload (Null, CF-* and their QoS variants):
+# there is no LLC/SNAP header to inspect, so skip them cheaply.
+_NULL_DATA_SUBTYPES = frozenset((4, 5, 6, 7, 12, 13, 14, 15))
+
+
+def eapol_bssid(packet):
+    """If `packet` (radiotap header + 802.11 frame) is an EAPOL frame, return
+    the access point's BSSID as a MAC string; otherwise None.
+
+    The 802.11 data header length varies (QoS control, HT control, and the rare
+    4-address WDS form), so the LLC/SNAP header is located from the frame-control
+    flags rather than a fixed offset. The BSSID is whichever address the ToDS/
+    FromDS bits designate."""
+    if len(packet) < 4 or packet[0] != 0:
+        return None
+    rt_len = struct.unpack_from('<H', packet, 2)[0]
+    if rt_len < 8 or rt_len > len(packet):
+        return None
+    frame = packet[rt_len:]
+    if len(frame) < 24:
+        return None
+
+    fc0, fc1 = frame[0], frame[1]
+    if (fc0 >> 2) & 0x03 != FRAME_TYPE_DATA:
+        return None
+    subtype = (fc0 >> 4) & 0x0f
+    if subtype in _NULL_DATA_SUBTYPES:
+        return None
+
+    to_ds = fc1 & 0x01
+    from_ds = (fc1 >> 1) & 0x01
+
+    hdr = 24
+    if subtype & 0x08:            # QoS data: 2-byte QoS Control field
+        hdr += 2
+        if fc1 & 0x80:            # Order/+HTC bit set: 4-byte HT Control field
+            hdr += 4
+    if to_ds and from_ds:         # 4-address WDS frame: a 4th address (6 bytes)
+        hdr += 6
+
+    if len(frame) < hdr + 8:
+        return None
+    if frame[hdr:hdr + 6] != _SNAP_LLC_PREFIX:
+        return None
+    if struct.unpack_from('>H', frame, hdr + 6)[0] != EAPOL_ETHERTYPE:
+        return None
+
+    if from_ds and not to_ds:
+        bssid = frame[10:16]      # Addr2 is the BSSID (AP -> station)
+    elif to_ds and not from_ds:
+        bssid = frame[4:10]       # Addr1 is the BSSID (station -> AP)
+    else:
+        bssid = frame[16:22]      # Addr3 (IBSS / other)
+    return ':'.join('%02X' % b for b in bssid)
 
 
 def parse_radiotap_and_beacon(packet):
