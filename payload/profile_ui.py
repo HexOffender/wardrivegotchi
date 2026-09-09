@@ -11,6 +11,7 @@ the player directly with no lock.
 
 import time
 
+import achievements
 import avatar
 import blocks
 import palette
@@ -114,6 +115,15 @@ def _draw_profile(pager, player, db_stats, use_png=True):
     # Level badge and credits, top left.
     blocks.text_button(pager, 20, 20, "LVL %d" % prog['level'], FONT_TITLE, 24, pad_y=4)
     _text(pager, 20, 58, "%d credits" % player.credits, palette.INK, FONT_MENU, 16)
+
+    # The earned title and the achievement count, beside the badge.
+    title = player.title
+    n_ach = "%d/%d achv" % (len(player.unlocked), len(achievements.CATALOG))
+    if title:
+        _text(pager, 130, 24, title, palette.ACCENT, FONT_MENU, 14)
+        _text(pager, 130, 46, n_ach, palette.INK_MUTED, FONT_MENU, 13)
+    else:
+        _text(pager, 130, 34, n_ach, palette.INK_MUTED, FONT_MENU, 13)
 
     # Experience bar under the badge, on the left half.
     bx, by, bw, bh = 20, 80, ax - 36, 18

@@ -376,6 +376,41 @@ body {
 .shop-filter.on { color: var(--on-accent); background: var(--brand-primary); }
 .shop-empty { font-family: var(--font-mono); font-size: .8rem; color: var(--ink-muted); padding: var(--sp-2) 0; }
 
+/* Title earned from achievements, shown under the level badge. */
+.title-line {
+  font-family: var(--font-display);
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  font-size: .85rem;
+  color: var(--brand-primary);
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-3);
+}
+/* Achievements list: same hard-edged look as the shop. */
+.ach-bar { display: flex; align-items: center; gap: var(--sp-2); cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+.ach-count { margin-left: auto; font-family: var(--font-mono); font-size: .78rem; color: var(--ink-muted); }
+.ach-bar .shop-caret { margin-left: var(--sp-2); }
+.ach-item {
+  display: flex; align-items: stretch; gap: var(--sp-3);
+  background: var(--surface); border: var(--edge-w) solid var(--ink);
+  padding: var(--sp-2) var(--sp-3); margin-bottom: var(--sp-2);
+}
+.ach-item.done { background: var(--notice); }
+.ach-main { flex: 1; min-width: 0; }
+.ach-item .name { font-weight: 700; font-size: .9rem; }
+.ach-item .desc { font-size: .7rem; color: var(--ink-muted); margin-bottom: 4px; }
+.ach-title {
+  font-family: var(--font-mono); font-size: .6rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--on-accent);
+  background: var(--brand-primary); padding: 1px 5px; margin-left: 4px; white-space: nowrap;
+}
+.ach-prog { height: 6px; background: var(--bg); border: var(--edge-w) solid var(--ink); overflow: hidden; }
+.ach-prog-fill { height: 100%; background: var(--brand-primary); width: 0; }
+.ach-side { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; min-width: 54px; }
+.ach-mark { font-family: var(--font-mono); font-weight: 700; font-size: .8rem; }
+.ach-item.done .ach-mark { color: var(--brand-primary); font-size: 1rem; }
+.ach-reward { font-family: var(--font-mono); font-size: .58rem; color: var(--ink-muted); text-align: right; }
+
 /* Radar (relative AP plot) and the searchable network list. */
 .datasec { display: none; margin-bottom: var(--sp-5); }
 .datasec.on { display: block; }
@@ -814,6 +849,7 @@ window.AVATAR = {
       <span class="level-badge" id="pLevel">LVL 1</span>
       <span class="credits" id="pCredits">0 cr</span>
     </div>
+    <div class="title-line" id="pTitle" hidden></div>
     <div class="xpbar">
       <div class="xpbar-fill" id="pXpFill"></div>
       <div class="xpbar-text" id="pXpText">0 / 0 XP</div>
@@ -836,6 +872,13 @@ window.AVATAR = {
       <button type="button" class="shop-filter" data-slot="feet">Feet</button>
     </div>
     <div id="pShop"></div>
+
+    <div class="section-label ach-bar" id="achBar">
+      <span>Achievements</span>
+      <span class="ach-count" id="achCount"></span>
+      <span class="shop-caret" id="achCaret">▸</span>
+    </div>
+    <div id="pAch" hidden></div>
   </div>
 
   <div class="control" id="ctl">
@@ -1060,6 +1103,50 @@ toggleEl.addEventListener('click', function() {
     renderShopList();
   });
 
+  // Achievements: a collapsible list (24 entries, so collapsed by default with
+  // the unlocked count shown in the bar). Locked-in-progress sort to the top by
+  // how close they are; unlocked drop to the bottom.
+  var achCollapsed = true;
+  var lastAch = [];
+  try { achCollapsed = sessionStorage.getItem("achCollapsed") !== "0"; } catch (e) {}
+
+  function renderAchList() {
+    var list = document.getElementById("pAch");
+    document.getElementById("achCaret").textContent = achCollapsed ? "▸" : "▾";
+    list.hidden = achCollapsed;
+    if (achCollapsed) return;
+
+    var items = lastAch.slice();
+    items.sort(function (a, b) {
+      if (a.unlocked !== b.unlocked) return a.unlocked ? 1 : -1;
+      if (!a.unlocked) return (b.pct || 0) - (a.pct || 0);
+      return 0;
+    });
+
+    list.innerHTML = items.map(function (a) {
+      var reward = [];
+      if (a.xp) reward.push(a.xp + " xp");
+      if (a.credits) reward.push(a.credits + " cr");
+      var titleTag = a.title ? ' <span class="ach-title">' + esc(a.title) + '</span>' : '';
+      var mark = a.unlocked ? "✓" : (a.value + "/" + a.goal);
+      return '<div class="' + (a.unlocked ? "ach-item done" : "ach-item") + '">' +
+        '<div class="ach-main">' +
+          '<div class="name">' + esc(a.name) + titleTag + '</div>' +
+          '<div class="desc">' + esc(a.desc) + '</div>' +
+          '<div class="ach-prog"><div class="ach-prog-fill" style="width:' + (a.pct || 0) + '%"></div></div>' +
+        '</div>' +
+        '<div class="ach-side"><div class="ach-mark">' + mark + '</div>' +
+          (reward.length ? '<div class="ach-reward">' + reward.join(" · ") + '</div>' : '') +
+        '</div></div>';
+    }).join("") || '<div class="shop-empty">No achievements.</div>';
+  }
+
+  document.getElementById("achBar").addEventListener("click", function () {
+    achCollapsed = !achCollapsed;
+    try { sessionStorage.setItem("achCollapsed", achCollapsed ? "1" : "0"); } catch (e) {}
+    renderAchList();
+  });
+
   function esc(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
@@ -1142,6 +1229,9 @@ toggleEl.addEventListener('click', function() {
 
     document.getElementById("pLevel").textContent = "LVL " + p.level;
     document.getElementById("pCredits").textContent = p.credits + " cr";
+    var tEl = document.getElementById("pTitle");
+    tEl.textContent = p.title || "";
+    tEl.hidden = !p.title;
     document.getElementById("pXpFill").style.width = (p.xp_pct || 0) + "%";
     document.getElementById("pXpText").textContent =
       p.xp_into + " / " + p.xp_span + " XP";
@@ -1167,6 +1257,11 @@ toggleEl.addEventListener('click', function() {
     // helper so the type filter and collapsed state survive each refresh.
     lastShop = shop;
     renderShopList();
+
+    lastAch = p.achievements || [];
+    document.getElementById("achCount").textContent =
+      (p.achievements_unlocked || 0) + "/" + (p.achievements_total || 0);
+    renderAchList();
 
     renderAvatar(p.equipped || {});
   }
