@@ -341,6 +341,12 @@ function showTab(name) {
   event.target.classList.add('active');
 }
 
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
 function fetchStats() {
   fetch('/api/stats').then(r=>r.json()).then(d => {
     document.getElementById('s-total').textContent = d.total;
@@ -353,7 +359,10 @@ function fetchStats() {
     tb.innerHTML = '';
     (d.recent_aps||[]).forEach(ap => {
       var cls = ap.encryption=='Open'?'open':ap.encryption=='WEP'?'wep':ap.encryption=='WPA3'?'wpa3':'wpa';
-      tb.innerHTML += '<tr><td>'+ap.bssid+'</td><td>'+(ap.ssid||'<i>hidden</i>')+'</td><td class="'+cls+'">'+(ap.auth_mode||ap.encryption)+'</td><td>'+ap.signal+'</td><td>'+ap.channel+'</td></tr>';
+      // SSIDs and BSSIDs are broadcast by any nearby AP - escape them so a
+      // crafted SSID (e.g. containing <script>) cannot run in this page.
+      var ssid = ap.ssid ? esc(ap.ssid) : '<i>hidden</i>';
+      tb.innerHTML += '<tr><td>'+esc(ap.bssid)+'</td><td>'+ssid+'</td><td class="'+cls+'">'+esc(ap.auth_mode||ap.encryption)+'</td><td>'+esc(ap.signal)+'</td><td>'+esc(ap.channel)+'</td></tr>';
     });
   }).catch(()=>{});
 }
