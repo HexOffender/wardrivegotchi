@@ -118,16 +118,15 @@ class WigleWriter:
         return None
 
 
-def export_csv(db, export_dir, filename=None):
-    """Full export — writes all APs from DB to a new CSV (for manual export)."""
+def export_ap_list(aps, export_dir, filename=None):
+    """Write the given access-point dicts to a new Wigle CSV and return the path.
+    Access points at 0,0 (logged before a GPS fix) are skipped."""
     os.makedirs(export_dir, exist_ok=True)
     if filename:
         filepath = os.path.join(export_dir, filename)
     else:
         timestamp = datetime.utcnow().strftime('%Y%m%d_%H%M%S')
         filepath = os.path.join(export_dir, f'wigle_{timestamp}.csv')
-
-    aps = db.get_all_aps()
 
     with open(filepath, 'w', newline='') as f:
         f.write('WigleWifi-1.6,appRelease=1.0,model=pineapplepager,'
@@ -142,23 +141,28 @@ def export_csv(db, export_dir, filename=None):
         for ap in aps:
             lat = ap.get('lat') or 0.0
             lon = ap.get('lon') or 0.0
-            # Exclude access points with no position (stored at 0,0, seen before
-            # the first GPS fix). They are worse than useless in Wigle.
             if lat == 0.0 and lon == 0.0:
                 continue
-            auth = ap.get('auth_mode') or _auth_mode_string(ap['encryption'])
-            freq = ap.get('frequency') or _channel_to_freq(ap['channel'])
-            first_seen = ap['first_seen']
+            auth = ap.get('auth_mode') or _auth_mode_string(ap.get('encryption', 'Open'))
+            freq = ap.get('frequency') or _channel_to_freq(ap.get('channel', 0))
+            first_seen = ap.get('first_seen', '')
             if 'T' in first_seen:
                 first_seen = first_seen.replace('T', ' ').split('.')[0]
             writer.writerow([
-                ap['bssid'], ap['ssid'], auth, first_seen,
-                ap['channel'], freq, ap['signal'],
-                lat, lon, ap['alt'] or 0.0,
+                ap['bssid'], ap.get('ssid', ''), auth, first_seen,
+                ap.get('channel', 0), freq, ap.get('signal', -80),
+                lat, lon, ap.get('alt', 0.0) or 0.0,
                 0, '', '', 'WIFI'
             ])
 
     return filepath
+
+
+def export_csv(db, export_dir, filename=None):
+    """Full export — every AP in the DB to a new CSV (for a manual, complete
+    export). The incremental Wigle upload uses export_ap_list on the pending
+    rows instead, so networks are not re-sent."""
+    return export_ap_list(db.get_all_aps(), export_dir, filename)
 
 
 def upload_to_wigle(filepath, api_name, api_token):

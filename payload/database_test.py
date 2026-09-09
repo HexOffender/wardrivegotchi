@@ -75,6 +75,34 @@ def main():
 
     check(_rssi_weight(-30) > _rssi_weight(-80), "stronger RSSI weighs more")
 
+    # ---- incremental Wigle upload tracking ----
+    d3 = tempfile.mkdtemp()
+    u = Database(os.path.join(d3, "u.db"))
+    cols = {r[1] for r in u.conn.execute("PRAGMA table_info(access_points)")}
+    check("uploaded" in cols, "migration added the uploaded column")
+
+    u.upsert_ap(ap("U1", -50), G(45.0, -75.0, 0.0, 2))   # has GPS
+    u.upsert_ap(ap("U2", -55), G(46.0, -76.0, 0.0, 2))   # has GPS
+    u.upsert_ap(ap("U3", -60), G(mode=0))                # no fix -> 0,0
+    pending = {a["bssid"] for a in u.get_unuploaded_aps()}
+    check(pending == {"U1", "U2"}, "pending = GPS'd, not-yet-uploaded (0,0 excluded): %s" % pending)
+
+    u.mark_uploaded(["U1", "U2"])
+    check(u.get_unuploaded_aps() == [], "after upload, nothing pending")
+
+    # A new GPS'd AP becomes pending; the 0,0 one only after it is back-filled.
+    u.upsert_ap(ap("U4", -50), G(47.0, -77.0, 0.0, 2))
+    u.upsert_ap(ap("U3", -70), G(48.0, -78.0, 0.0, 2))   # back-fill U3's position
+    pending2 = {a["bssid"] for a in u.get_unuploaded_aps()}
+    check(pending2 == {"U3", "U4"}, "back-filled + new become pending, already-sent do not: %s" % pending2)
+
+    # Reopen must not re-wipe the averaging aggregates (migration decoupling).
+    u.conn.execute("UPDATE access_points SET obs_count=5 WHERE bssid='U1'")
+    u.conn.commit(); u.close()
+    u = Database(os.path.join(d3, "u.db"))
+    check(u.conn.execute("SELECT obs_count FROM access_points WHERE bssid='U1'").fetchone()[0] == 5,
+          "reopen does not reset aggregates when a column is added")
+
     print("\nTOTAL FAILURES: %d" % fails)
     sys.exit(1 if fails else 0)
 

@@ -25,7 +25,7 @@ from gps_module import GpsReader, GpsState
 from capture import Capture
 from dashboard import Dashboard
 from settings_menu import SettingsMenu
-from wigle_export import export_csv, upload_to_wigle, WigleWriter
+from wigle_export import export_csv, export_ap_list, upload_to_wigle, WigleWriter
 from gpx_logger import GpxWriter
 from web_server import WebServer
 from control import ControlChannel
@@ -578,18 +578,23 @@ class Wardrive:
             return f"Export failed: {e}"
 
     def _upload_callback(self):
-        """Upload latest export to Wigle."""
+        """Upload only the networks not yet sent to Wigle. Each access point is
+        uploaded once - when it first has a GPS position - so Wigle never has to
+        reprocess data already submitted. Access points still at 0,0 stay pending
+        until they are back-filled with a fix."""
         name = self.config.get('wigle_api_name', '')
         token = self.config.get('wigle_api_token', '')
         if not name or not token:
             return "No API key set"
-        # Find latest export
         try:
-            exports = sorted([f for f in os.listdir(EXPORT_DIR) if f.endswith('.csv')])
-            if not exports:
-                return "No exports found"
-            filepath = os.path.join(EXPORT_DIR, exports[-1])
+            aps = self.db.get_unuploaded_aps()
+            if not aps:
+                return "Nothing new to upload"
+            filepath = export_ap_list(aps, EXPORT_DIR)
             success, msg = upload_to_wigle(filepath, name, token)
+            if success:
+                self.db.mark_uploaded(ap['bssid'] for ap in aps)
+                return "%s (%d new)" % (msg, len(aps))
             return msg
         except Exception as e:
             return f"Upload failed: {e}"

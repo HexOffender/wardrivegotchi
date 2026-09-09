@@ -53,11 +53,12 @@ class Database:
                            ('w_sum', 'REAL DEFAULT 0'),
                            ('wlat_sum', 'REAL DEFAULT 0'),
                            ('wlon_sum', 'REAL DEFAULT 0'),
-                           ('walt_sum', 'REAL DEFAULT 0')):
+                           ('walt_sum', 'REAL DEFAULT 0'),
+                           ('uploaded', 'INTEGER DEFAULT 0')):
             if name not in cols:
                 self.conn.execute('ALTER TABLE access_points ADD COLUMN %s %s' % (name, decl))
                 added.append(name)
-        if added:
+        if 'w_sum' in added:  # only when the aggregate columns are newly added
             for bssid, lat, lon, alt, signal in self.conn.execute(
                     'SELECT bssid, lat, lon, alt, signal FROM access_points '
                     'WHERE lat != 0 OR lon != 0').fetchall():
@@ -237,6 +238,30 @@ class Database:
             'FROM access_points ORDER BY last_seen DESC LIMIT ?', (int(limit),))
         cols = [d[0] for d in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def get_unuploaded_aps(self):
+        """Access points with a position that have not yet been uploaded to
+        Wigle. Rows still at 0,0 are excluded and stay pending until back-filled,
+        so each network is uploaded once, when it first has a fix."""
+        cur = self.conn.execute(
+            'SELECT * FROM access_points '
+            'WHERE uploaded = 0 AND (lat != 0 OR lon != 0) ORDER BY first_seen')
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def mark_uploaded(self, bssids):
+        """Mark the given BSSIDs as uploaded so they are not sent to Wigle again.
+        Only the ones actually written to the uploaded file are passed, so an
+        access point found while an upload is in flight stays pending."""
+        bssids = list(bssids)
+        for i in range(0, len(bssids), 400):
+            chunk = bssids[i:i + 400]
+            placeholders = ','.join('?' * len(chunk))
+            self.conn.execute(
+                'UPDATE access_points SET uploaded = 1 WHERE bssid IN (%s)' % placeholders,
+                chunk)
+        self.conn.commit()
+        return len(bssids)
 
     def close(self):
         self.conn.close()
