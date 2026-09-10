@@ -49,7 +49,7 @@ def write_manifest():
                 'the registration. No code change needed.',
     }
     os.makedirs(ASSETS, exist_ok=True)
-    with open(os.path.join(ASSETS, 'manifest.json'), 'w') as f:
+    with open(os.path.join(ASSETS, 'manifest.json'), 'w', encoding='utf-8') as f:
         json.dump(manifest, f, indent=2)
 
 
@@ -79,7 +79,11 @@ def embed_index():
     blob = "<script>\n" + "\n".join(js) + "\n</script>"
 
     start, end = "<!-- AVATAR_LAYERS_START -->", "<!-- AVATAR_LAYERS_END -->"
-    html = open(INDEX).read()
+    # Read/write as UTF-8 explicitly: the page has non-ASCII characters, and the
+    # platform default (cp1252 on Windows) fails on them. newline='' keeps the
+    # file's existing line endings from being rewritten.
+    with open(INDEX, encoding='utf-8') as f:
+        html = f.read()
     block = start + "\n" + blob + "\n" + end
     if start in html and end in html:
         html = html[:html.index(start)] + block + html[html.index(end) + len(end):]
@@ -87,7 +91,8 @@ def embed_index():
         html = html.replace("</head>", block + "\n</head>", 1)
     else:
         html = block + "\n" + html
-    open(INDEX, "w").write(html)
+    with open(INDEX, "w", encoding='utf-8', newline='') as f:
+        f.write(html)
     return len(layers)
 
 

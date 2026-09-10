@@ -45,22 +45,29 @@ Until you add its art (below) it shows the placeholder marker for its slot.
   canvases at the two export sizes.
 
 Workflow: open a slot template, add a **new layer** on top, draw the item inside
-the bright box, then hide/delete the template layer and export just your layer:
-
-- to `highres/<item_id>.png` at 384 x 504, and
-- a copy scaled to 128 x 168 (nearest-neighbour) to `lowres/<item_id>.png`.
+the bright box, then hide/delete the template layer and export just your layer to
+`highres/<item_id>.png` at 384 x 504. You only draw the high-res version - the
+Pager's 128 x 168 copies are made for you (see below).
 
 The templates are guides only - never flatten them into your art.
 
 ## Adding your art
 
-1. Draw the layers and save them into `highres/` and `lowres/` with the names
-   above (same names, same transparency, same registration on the canvas).
-2. From the repo root, run `python3 assets/gen_avatar.py`. This embeds the
-   high-res layers into the phone page and refreshes `manifest.json`.
+1. Draw each layer and save it into `highres/` with the name above (same names,
+   same transparency, same registration on the canvas). You only draw the
+   high-res version.
+2. From the repo root, run `make avatar` (or `make lowres PYTHON=...` if `make`
+   picks the wrong Python). This scales the Pager's `lowres/` copies from your
+   high-res art, embeds the high-res layers into the phone page, and refreshes
+   `manifest.json`. Without `make`, run `python3 assets/gen_lowres.py` then
+   `python3 assets/gen_avatar.py`.
 3. That is all. No code changes. Missing an item's file just means that item
    falls back to the placeholder marker; a present `base.png` switches the whole
    avatar from placeholder to your art.
+
+`make lowres` scales `highres/` down to `lowres/` (128 x 168) with an
+alpha-correct resize, so soft edges do not pick up a dark halo. Pass
+`FILTER=nearest` for a crisp pixel-art reduction instead.
 
 ## Concept art for testing (optional, not for shipping)
 
