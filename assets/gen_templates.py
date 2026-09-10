@@ -114,8 +114,14 @@ def slot_template(slot):
 
     x0, y0, x1, y1 = box
     items = [it['name'] for it in avatar.CATALOG if it['slot'] == slot]
-    _label(d, '%s  [%d,%d]-[%d,%d]' % (slot.upper(), x0, y0, x1, y1), (6, 6), font)
-    _label(d, '%dx%d units' % (x1 - x0 + 1, y1 - y0 + 1), (6, H - 26), _font(13))
+    # Keep the label clear of the drawable box: just below it, or just above
+    # when the box reaches the bottom edge (feet). The head box spans the whole
+    # top, so its label lands under the box rather than inside it.
+    l, t, r, b = _box_px(box)
+    text = '%s  [%d,%d]-[%d,%d]  %dx%d u' % (slot.upper(), x0, y0, x1, y1,
+                                             x1 - x0 + 1, y1 - y0 + 1)
+    label_y = b + 6 if b + 28 <= H else max(4, t - 24)
+    _label(d, text, (6, label_y), font)
     return img, items
 
 
