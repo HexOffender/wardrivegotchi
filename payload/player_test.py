@@ -11,6 +11,7 @@ import tempfile
 
 import player as P
 import achievements as A
+import items
 
 fails = 0
 
@@ -110,6 +111,29 @@ def main():
     again = P.Player.load(pl4.path)
     check('hardhat' in again.inventory and 'aps_10' in again.unlocked,
           "reload keeps inventory and unlocked achievements")
+
+    # --- Multi-slot items fill and free every slot they span. ---
+    plm = P.Player.load(os.path.join(d, "m.json"))
+    plm.seeded = True
+    plm.total_xp = P.xp_to_reach(12)
+    plm._add_credits(5000)
+    plm.buy('hardhat')          # head
+    plm.buy('round_glasses')    # eyes
+    plm.buy('moto_helmet')      # spans head + eyes
+    check(plm.equipped.get('head') == 'moto_helmet' and plm.equipped.get('eyes') == 'moto_helmet',
+          "a multi-slot item fills all of its slots")
+    check('hardhat' not in plm.equipped.values() and 'round_glasses' not in plm.equipped.values(),
+          "equipping it evicts the items it displaces")
+    plm.buy('onesie')           # spans all five
+    check(set(plm.equipped) == set(items.SLOTS) and set(plm.equipped.values()) == {'onesie'},
+          "a full-body item fills every slot and evicts the rest")
+    ok, _ = plm.unequip('feet')  # name any slot it occupies
+    check(ok and 'onesie' not in plm.equipped.values(),
+          "unequipping a multi-slot item frees all of its slots")
+    plm.equip('onesie')
+    plm.equip('hardhat')         # into just one of the outfit's slots
+    check(plm.equipped.get('head') == 'hardhat' and 'onesie' not in plm.equipped.values(),
+          "equipping into one slot of a worn outfit removes the whole outfit")
 
     print("\nTOTAL FAILURES: %d" % fails)
     sys.exit(1 if fails else 0)

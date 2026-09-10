@@ -310,6 +310,23 @@ class Player:
 
     # Spending.
 
+    def _remove_item(self, item_id):
+        """Free every slot an item currently occupies (a multi-slot item leaves
+        all of its slots at once)."""
+        for slot in [s for s, iid in self.equipped.items() if iid == item_id]:
+            del self.equipped[slot]
+
+    def _wear(self, item):
+        """Fill every slot the item spans, evicting whatever was in any of them.
+        Evicting a multi-slot occupant frees all of its slots, so no half-worn
+        outfit is ever left behind."""
+        for slot in items.slots_of(item):
+            occupant = self.equipped.get(slot)
+            if occupant and occupant != item['id']:
+                self._remove_item(occupant)
+        for slot in items.slots_of(item):
+            self.equipped[slot] = item['id']
+
     def buy(self, item_id):
         """Buy a shop item. Returns (ok, message)."""
         item = next((i for i in SHOP if i['id'] == item_id), None)
@@ -324,27 +341,29 @@ class Player:
         self.credits -= item['cost']
         self.inventory.append(item_id)
         # Wearing it straight away is the friendly default; it can be taken off.
-        self.equipped[item['slot']] = item_id
+        self._wear(item)
         self.save()
         return True, 'bought ' + item['name']
 
     def equip(self, item_id):
-        """Wear an owned item. It fills its slot, replacing whatever was there."""
+        """Wear an owned item. It fills its slot(s), replacing whatever was there."""
         item = next((i for i in SHOP if i['id'] == item_id), None)
         if item is None or item_id not in self.inventory:
             return False, 'not owned'
-        self.equipped[item['slot']] = item_id
+        self._wear(item)
         self.save()
         return True, 'equipped ' + item['name']
 
     def unequip(self, slot_or_item):
-        """Take off an item, by slot name or by item id."""
-        slot = slot_or_item
-        if slot_or_item not in self.equipped:
-            item = next((i for i in SHOP if i['id'] == slot_or_item), None)
-            slot = item['slot'] if item else None
-        if slot and slot in self.equipped:
-            del self.equipped[slot]
+        """Take off an item, by slot name or by item id. A multi-slot item comes
+        off all of its slots however you name it."""
+        item_id = None
+        if slot_or_item in self.equipped:
+            item_id = self.equipped[slot_or_item]
+        elif items.get(slot_or_item):
+            item_id = slot_or_item
+        if item_id and item_id in self.equipped.values():
+            self._remove_item(item_id)
             self.save()
             return True, 'removed'
         return False, 'not worn'

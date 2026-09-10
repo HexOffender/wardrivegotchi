@@ -36,8 +36,16 @@ def main():
 
     # Helpers behave.
     check(items.get('hardhat') is not None and items.get('nope') is None, "get() looks items up")
-    check(all(it['slot'] == 'head' for it in items.for_slot('head')) and items.for_slot('head'),
-          "for_slot() filters by slot")
+    check(all('head' in items.slots_of(it) for it in items.for_slot('head')) and items.for_slot('head'),
+          "for_slot() returns items that occupy the slot")
+
+    # Multi-slot items span several slots; single-slot items default to one.
+    check(items.slots_of(items.get('moto_helmet')) == ('head', 'eyes'),
+          "slots_of() spans a multi-slot item")
+    check(items.slots_of(items.get('hardhat')) == ('head',),
+          "slots_of() defaults to the single slot")
+    check('onesie' in [i['id'] for i in items.for_slot('feet')],
+          "a multi-slot item shows under each slot it spans")
 
     # validate() actually catches a bad entry.
     bad = items.CATALOG + [{'id': 'x', 'name': 'X', 'slot': 'nope', 'cost': -1, 'level': 1}]
@@ -45,6 +53,18 @@ def main():
     try:
         items.CATALOG = bad
         check(len(items.validate()) >= 2, "validate() flags a bad slot and a negative cost")
+    finally:
+        items.CATALOG = saved
+
+    # validate() catches bad multi-slot entries: an unknown slot in `slots`, and
+    # a primary slot that is not one of them.
+    bad2 = items.CATALOG + [{'id': 'y', 'name': 'Y', 'slot': 'side',
+                             'slots': ('head', 'bogus'), 'cost': 1, 'level': 1}]
+    try:
+        items.CATALOG = bad2
+        probs = items.validate()
+        check(any('bogus' in p for p in probs) and any('one of its slots' in p for p in probs),
+              "validate() flags an unknown multi-slot and slot-not-in-slots")
     finally:
         items.CATALOG = saved
 

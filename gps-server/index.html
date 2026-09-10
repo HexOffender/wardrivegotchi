@@ -1064,7 +1064,9 @@ toggleEl.addEventListener('click', function() {
     });
 
     const items = lastShop.filter(function (i) {
-      return shopFilter === "all" || i.slot === shopFilter;
+      // A multi-slot item shows under any of the slots it spans.
+      return shopFilter === "all" || i.slot === shopFilter ||
+             (i.slots && i.slots.indexOf(shopFilter) !== -1);
     });
 
     list.innerHTML = items.map(function (i) {
@@ -1078,8 +1080,11 @@ toggleEl.addEventListener('click', function() {
         right = '<button class="buy" data-act="equip" data-item="' + esc(i.id) + '">Wear</button>';
       }
       const cls = i.equipped ? "shop-item owned" : "shop-item";
+      const span = (i.slots && i.slots.length > 1)
+        ? (i.slots.length >= 5 ? "full body" : i.slots.join("+"))
+        : i.slot;
       return '<div class="' + cls + '"><div><div class="name">' + esc(i.name) +
-             '</div><div class="desc">' + esc(i.slot) + ' \u00b7 lvl ' + i.level +
+             '</div><div class="desc">' + esc(span) + ' \u00b7 lvl ' + i.level +
              '</div></div>' + right + '</div>';
     }).join("") || '<div class="shop-empty">No items in this category.</div>';
 
@@ -1160,11 +1165,14 @@ toggleEl.addEventListener('click', function() {
     equipped = equipped || {};
     const L = window.AVATAR.layers || {};
     if (L.base) {
-      // Real art present: stack the transparent layers in z-order.
+      // Real art present: stack the transparent layers in z-order. A multi-slot
+      // item sits in several equipped slots but has one layer, so draw each id
+      // once, at the first z-order slot it occupies.
       let html = '<img src="' + L.base + '" alt="owl">';
+      const drawn = {};
       window.AVATAR.zorder.forEach(function (slot) {
         const id = equipped[slot];
-        if (id && L[id]) html += '<img src="' + L[id] + '" alt="">';
+        if (id && L[id] && !drawn[id]) { drawn[id] = 1; html += '<img src="' + L[id] + '" alt="">'; }
       });
       box.innerHTML = html;
     } else {

@@ -42,8 +42,9 @@ SLOT_BOX = {
     'head':  (4, 0, 59, 19),    # crown and above: tall hats, wide brims
     'eyes':  (18, 20, 45, 27),  # the eye row
     'neck':  (20, 30, 43, 46),  # throat and collar, high under the head
-    'side':  (0, 22, 17, 78),   # held out to the owl's left, into the margin
-    'feet':  (18, 70, 55, 83),  # under the talons and below
+    'side':  (0, 22, 17, 63),   # held out to the owl's left; ends above the feet band
+    'feet':  (0, 64, 63, 83),   # the full-width bottom band: talons, perch, and
+                                # anything that replaces the perch (a fish, a board)
 }
 
 # Draw order, low to high. Held and footwear first, then neck, then the head,
@@ -161,10 +162,14 @@ def layer_paths(equipped, res='lowres'):
     if not _os.path.isfile(base):
         return []
     paths = [base]
+    seen = set()
     for slot in ZORDER:
         item_id = equipped.get(slot)
-        if not item_id:
+        # A multi-slot item appears in several of the equipped slots; draw its
+        # one layer once, at the first z-order slot it occupies.
+        if not item_id or item_id in seen:
             continue
+        seen.add(item_id)
         p = _os.path.join(d, item_id + '.png')
         if _os.path.isfile(p):
             paths.append(p)

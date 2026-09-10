@@ -13,6 +13,12 @@ Each item is a dict:
     slot   Which body slot it occupies: one of SLOTS below (head, eyes, neck,
            side, feet). At most one item per slot is worn at a time, and the
            slots never overlap, so worn items cannot clip each other.
+    slots  Optional. A tuple of every slot the item spans, for items that cover
+           more than one - a motorcycle helmet over ('head', 'eyes'), a onesie
+           over all five. `slot` must be one of them (it is the primary slot for
+           the shop filter and the art file name). Equipping the item fills all
+           of its slots and removes whatever was in any of them; unequipping
+           frees them all. Its art is one PNG drawn across the union of the boxes.
     cost   Credits to buy it in the shop.
     level  Minimum player level required to buy it.
 
@@ -60,6 +66,11 @@ CATALOG = [
     {'id': 'clownshoes', 'name': 'Clown Shoes', 'slot': 'feet', 'cost': 100, 'level': 3},
     {'id': 'skateboard', 'name': 'Skateboard', 'slot': 'feet', 'cost': 180, 'level': 6},
     {'id': 'fish', 'name': 'Fresh Catch', 'slot': 'feet', 'cost': 140, 'level': 4},
+    # MULTI-SLOT - span several slots at once (see `slots` above).
+    {'id': 'moto_helmet', 'name': 'Moto Helmet', 'slot': 'head',
+     'slots': ('head', 'eyes'), 'cost': 220, 'level': 6},
+    {'id': 'onesie', 'name': 'Dino Onesie', 'slot': 'neck',
+     'slots': ('head', 'eyes', 'neck', 'side', 'feet'), 'cost': 400, 'level': 10},
 ]
 
 # id -> item, for quick lookup.
@@ -76,9 +87,16 @@ def all_ids():
     return [it['id'] for it in CATALOG]
 
 
+def slots_of(item):
+    """Every slot an item occupies: just its `slot`, unless it lists `slots` to
+    span several (a helmet over head+eyes, a onesie over all five)."""
+    return tuple(item['slots']) if item.get('slots') else (item['slot'],)
+
+
 def for_slot(slot):
-    """Every item that occupies a slot, in catalogue order."""
-    return [it for it in CATALOG if it['slot'] == slot]
+    """Every item that occupies a slot (including multi-slot items that span it),
+    in catalogue order."""
+    return [it for it in CATALOG if slot in slots_of(it)]
 
 
 def validate(valid_slots=SLOTS):
@@ -99,6 +117,18 @@ def validate(valid_slots=SLOTS):
             problems.append('%s: missing name' % iid)
         if it.get('slot') not in valid_slots:
             problems.append('%s: unknown slot %r (valid: %s)' % (iid, it.get('slot'), ', '.join(valid_slots)))
+        multi = it.get('slots')
+        if multi is not None:
+            if not isinstance(multi, (list, tuple)) or not multi:
+                problems.append('%s: slots must be a non-empty list' % iid)
+            else:
+                for s in multi:
+                    if s not in valid_slots:
+                        problems.append('%s: slots has unknown slot %r' % (iid, s))
+                if len(set(multi)) != len(multi):
+                    problems.append('%s: slots has a duplicate: %r' % (iid, tuple(multi)))
+                if it.get('slot') not in multi:
+                    problems.append('%s: slot %r must be one of its slots %r' % (iid, it.get('slot'), tuple(multi)))
         for key in ('cost', 'level'):
             val = it.get(key)
             if not isinstance(val, int) or isinstance(val, bool) or val < 0:
