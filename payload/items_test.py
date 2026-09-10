@@ -40,11 +40,12 @@ def main():
           "for_slot() returns items that occupy the slot")
 
     # Multi-slot items span several slots; single-slot items default to one.
-    check(items.slots_of(items.get('moto_helmet')) == ('head', 'eyes'),
+    check(items.slots_of(items.get('onesie')) == ('head', 'body', 'side', 'feet'),
           "slots_of() spans a multi-slot item")
     check(items.slots_of(items.get('hardhat')) == ('head',),
           "slots_of() defaults to the single slot")
-    check('onesie' in [i['id'] for i in items.for_slot('feet')],
+    check('onesie' in [i['id'] for i in items.for_slot('feet')]
+          and 'onesie' in [i['id'] for i in items.for_slot('head')],
           "a multi-slot item shows under each slot it spans")
 
     # validate() actually catches a bad entry.

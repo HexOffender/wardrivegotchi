@@ -58,20 +58,34 @@ def _box_px(box):
     return [x0 * SCALE, y0 * SCALE, (x1 + 1) * SCALE - 1, (y1 + 1) * SCALE - 1]
 
 
+# The real base art, if it has been drawn. When present the templates register
+# the boxes against your actual owl instead of the placeholder.
+REAL_BASE = os.path.join(ROOT, 'payload', 'avatar_assets', 'highres', 'base.png')
+
+
 def _base_layer():
-    """The faint owl + grid, shared by every template."""
+    """The faint owl + grid, shared by every template. Uses the real base.png
+    when it exists (stretched to the canvas, exactly as the app renders it),
+    otherwise the placeholder owl."""
     img = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     d.rectangle([0, 0, W - 1, H - 1], fill=BG)
 
-    # The reference owl (the placeholder with nothing worn).
-    grid = avatar.placeholder_grid({})
-    for gy, row in enumerate(grid):
-        for gx, ch in enumerate(row):
-            col = OWL.get(ch)
-            if col:
-                d.rectangle([gx * SCALE, gy * SCALE,
-                             (gx + 1) * SCALE - 1, (gy + 1) * SCALE - 1], fill=col)
+    if os.path.isfile(REAL_BASE):
+        # The owl the boxes register against, faded so the grid and boxes read
+        # on top of it. Stretched to the canvas, the same way the app draws it.
+        owl = Image.open(REAL_BASE).convert('RGBA').resize((W, H), Image.LANCZOS)
+        owl.putalpha(owl.split()[3].point(lambda a: int(a * 0.6)))
+        img.alpha_composite(owl)
+    else:
+        # The reference owl (the placeholder with nothing worn).
+        grid = avatar.placeholder_grid({})
+        for gy, row in enumerate(grid):
+            for gx, ch in enumerate(row):
+                col = OWL.get(ch)
+                if col:
+                    d.rectangle([gx * SCALE, gy * SCALE,
+                                 (gx + 1) * SCALE - 1, (gy + 1) * SCALE - 1], fill=col)
 
     # One grid line per unit, emphasised every 4 units.
     for gx in range(avatar.GRID_W + 1):

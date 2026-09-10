@@ -14,8 +14,8 @@ Each item is a dict:
            side, feet). At most one item per slot is worn at a time, and the
            slots never overlap, so worn items cannot clip each other.
     slots  Optional. A tuple of every slot the item spans, for items that cover
-           more than one - a motorcycle helmet over ('head', 'eyes'), a onesie
-           over all five. `slot` must be one of them (it is the primary slot for
+           more than one - a onesie over ('head', 'body', 'side', 'feet').
+           `slot` must be one of them (it is the primary slot for
            the shop filter and the art file name). Equipping the item fills all
            of its slots and removes whatever was in any of them; unequipping
            frees them all. Its art is one PNG drawn across the union of the boxes.
@@ -39,23 +39,23 @@ avatar_assets/README.md for the art contract.
 # The valid slots. Their on-canvas geometry (where each sits on the owl) lives
 # in avatar.SLOT_BOX; they are named here so the catalogue is self-contained and
 # items_test.py can check every item uses a real one.
-SLOTS = ('head', 'eyes', 'neck', 'side', 'feet')
+SLOTS = ('head', 'body', 'side', 'feet')
 
 CATALOG = [
-    # HEAD
+    # HEAD - hats and eyewear both live here; the owl's round face has no room
+    # for a separate eyes slot, so glasses are just head items.
     {'id': 'jester', 'name': 'Jester Cap', 'slot': 'head', 'cost': 120, 'level': 3},
     {'id': 'hardhat', 'name': 'Hard Hat', 'slot': 'head', 'cost': 80, 'level': 2},
     {'id': 'fedora', 'name': 'Fedora', 'slot': 'head', 'cost': 160, 'level': 5},
-    # EYES
-    {'id': 'round_glasses', 'name': 'Round Glasses', 'slot': 'eyes', 'cost': 70, 'level': 2},
-    {'id': 'square_glasses', 'name': 'Square Glasses', 'slot': 'eyes', 'cost': 70, 'level': 2},
-    {'id': 'eyepatch_l', 'name': 'Eye Patch (L)', 'slot': 'eyes', 'cost': 90, 'level': 3},
-    {'id': 'eyepatch_r', 'name': 'Eye Patch (R)', 'slot': 'eyes', 'cost': 90, 'level': 3},
-    {'id': 'sunglasses', 'name': 'Sunglasses', 'slot': 'eyes', 'cost': 110, 'level': 4},
-    # NECK
-    {'id': 'tie', 'name': 'Tie', 'slot': 'neck', 'cost': 80, 'level': 2},
-    {'id': 'goldchain', 'name': 'Gold Chain', 'slot': 'neck', 'cost': 200, 'level': 6},
-    {'id': 'lanyard', 'name': 'Lanyard + Badge', 'slot': 'neck', 'cost': 120, 'level': 4},
+    {'id': 'round_glasses', 'name': 'Round Glasses', 'slot': 'head', 'cost': 70, 'level': 2},
+    {'id': 'square_glasses', 'name': 'Square Glasses', 'slot': 'head', 'cost': 70, 'level': 2},
+    {'id': 'eyepatch_l', 'name': 'Eye Patch (L)', 'slot': 'head', 'cost': 90, 'level': 3},
+    {'id': 'eyepatch_r', 'name': 'Eye Patch (R)', 'slot': 'head', 'cost': 90, 'level': 3},
+    {'id': 'sunglasses', 'name': 'Sunglasses', 'slot': 'head', 'cost': 110, 'level': 4},
+    # BODY
+    {'id': 'tie', 'name': 'Tie', 'slot': 'body', 'cost': 80, 'level': 2},
+    {'id': 'goldchain', 'name': 'Gold Chain', 'slot': 'body', 'cost': 200, 'level': 6},
+    {'id': 'lanyard', 'name': 'Lanyard + Badge', 'slot': 'body', 'cost': 120, 'level': 4},
     # SIDE
     {'id': 'pager', 'name': 'Pineapple Pager', 'slot': 'side', 'cost': 150, 'level': 5},
     {'id': 'flipper', 'name': 'Flipper Zero', 'slot': 'side', 'cost': 150, 'level': 5},
@@ -66,11 +66,11 @@ CATALOG = [
     {'id': 'clownshoes', 'name': 'Clown Shoes', 'slot': 'feet', 'cost': 100, 'level': 3},
     {'id': 'skateboard', 'name': 'Skateboard', 'slot': 'feet', 'cost': 180, 'level': 6},
     {'id': 'fish', 'name': 'Fresh Catch', 'slot': 'feet', 'cost': 140, 'level': 4},
-    # MULTI-SLOT - span several slots at once (see `slots` above).
-    {'id': 'moto_helmet', 'name': 'Moto Helmet', 'slot': 'head',
-     'slots': ('head', 'eyes'), 'cost': 220, 'level': 6},
-    {'id': 'onesie', 'name': 'Dino Onesie', 'slot': 'neck',
-     'slots': ('head', 'eyes', 'neck', 'side', 'feet'), 'cost': 400, 'level': 10},
+    # A helmet is a plain head item now (it covers the whole face).
+    {'id': 'moto_helmet', 'name': 'Moto Helmet', 'slot': 'head', 'cost': 220, 'level': 6},
+    # MULTI-SLOT - spans several slots at once (see `slots` above).
+    {'id': 'onesie', 'name': 'Dino Onesie', 'slot': 'body',
+     'slots': ('head', 'body', 'side', 'feet'), 'cost': 400, 'level': 10},
 ]
 
 # id -> item, for quick lookup.

@@ -118,15 +118,14 @@ def main():
     plm.total_xp = P.xp_to_reach(12)
     plm._add_credits(5000)
     plm.buy('hardhat')          # head
-    plm.buy('round_glasses')    # eyes
-    plm.buy('moto_helmet')      # spans head + eyes
-    check(plm.equipped.get('head') == 'moto_helmet' and plm.equipped.get('eyes') == 'moto_helmet',
-          "a multi-slot item fills all of its slots")
-    check('hardhat' not in plm.equipped.values() and 'round_glasses' not in plm.equipped.values(),
-          "equipping it evicts the items it displaces")
-    plm.buy('onesie')           # spans all five
+    plm.buy('tie')              # body
+    plm.buy('cane')             # side
+    plm.buy('onesie')           # spans head, body, side, feet
     check(set(plm.equipped) == set(items.SLOTS) and set(plm.equipped.values()) == {'onesie'},
-          "a full-body item fills every slot and evicts the rest")
+          "a full-body item fills every slot it spans")
+    check('hardhat' not in plm.equipped.values() and 'tie' not in plm.equipped.values()
+          and 'cane' not in plm.equipped.values(),
+          "equipping it evicts the items it displaces")
     ok, _ = plm.unequip('feet')  # name any slot it occupies
     check(ok and 'onesie' not in plm.equipped.values(),
           "unequipping a multi-slot item frees all of its slots")

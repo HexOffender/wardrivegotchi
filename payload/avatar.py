@@ -21,8 +21,9 @@ How the art works:
 
 Two rules keep worn items from clipping or fighting, by construction:
 
-  1. One item per slot. At most one HEAD, one EYES, one NECK, one SIDE and one
-     FEET item at a time, so two things never claim the same spot.
+  1. One item per slot. At most one HEAD, one BODY, one SIDE and one FEET item
+     at a time, so two things never claim the same spot. (An item may span
+     several slots - see items.py `slots` - and then it fills all of them.)
 
   2. Each slot owns a box on the canvas (SLOT_BOX), and the boxes do not
      overlap, so items in different slots can never collide. check_slots()
@@ -36,20 +37,22 @@ Two rules keep worn items from clipping or fighting, by construction:
 GRID_W, GRID_H = 64, 84
 
 # Each slot owns a box (x0, y0, x1, y1), inclusive. The boxes do not overlap.
-# Art for an item must stay inside its slot's box. These positions assume the
-# owl is centred on the canvas with its eyes near row 22 and talons near row 72.
+# Art for an item must stay inside its slot's box. Shaped to the owl: the head
+# runs from the top down to just below the beak (so it holds hats AND eyewear -
+# there is no separate eyes slot, the owl's face is too round for one), the body
+# runs from there down to the feet, side is the held-item margin, and feet is
+# the full-width bottom band.
 SLOT_BOX = {
-    'head':  (4, 0, 59, 19),    # crown and above: tall hats, wide brims
-    'eyes':  (18, 20, 45, 27),  # the eye row
-    'neck':  (20, 30, 43, 46),  # throat and collar, high under the head
-    'side':  (0, 22, 17, 63),   # held out to the owl's left; ends above the feet band
+    'head':  (4, 0, 59, 27),    # crown, tufts, face and eyes: hats and eyewear
+    'body':  (18, 28, 63, 63),  # chest, from just below the beak down to the feet
+    'side':  (0, 28, 17, 63),   # held out to the owl's left, beside the body
     'feet':  (0, 64, 63, 83),   # the full-width bottom band: talons, perch, and
                                 # anything that replaces the perch (a fish, a board)
 }
 
-# Draw order, low to high. Held and footwear first, then neck, then the head,
-# and eyewear last so a hat brim never hides the glasses.
-ZORDER = ['side', 'feet', 'neck', 'head', 'eyes']
+# Draw order, low to high. Held items and footwear first, then the body, then
+# the head (and its eyewear) on top.
+ZORDER = ['side', 'feet', 'body', 'head']
 
 # The wearable items live in items.py, the single registry for the shop, the
 # inventory and the avatar. They are imported and re-exported here because much

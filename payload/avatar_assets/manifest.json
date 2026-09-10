@@ -6,22 +6,21 @@
   "zorder": [
     "side",
     "feet",
-    "neck",
-    "head",
-    "eyes"
+    "body",
+    "head"
   ],
   "slots": {
     "jester": "head",
     "hardhat": "head",
     "fedora": "head",
-    "round_glasses": "eyes",
-    "square_glasses": "eyes",
-    "eyepatch_l": "eyes",
-    "eyepatch_r": "eyes",
-    "sunglasses": "eyes",
-    "tie": "neck",
-    "goldchain": "neck",
-    "lanyard": "neck",
+    "round_glasses": "head",
+    "square_glasses": "head",
+    "eyepatch_l": "head",
+    "eyepatch_r": "head",
+    "sunglasses": "head",
+    "tie": "body",
+    "goldchain": "body",
+    "lanyard": "body",
     "pager": "side",
     "flipper": "side",
     "coffee": "side",
@@ -29,37 +28,33 @@
     "sword": "side",
     "clownshoes": "feet",
     "skateboard": "feet",
-    "fish": "feet"
+    "fish": "feet",
+    "moto_helmet": "head",
+    "onesie": "body"
   },
   "slot_box": {
     "head": [
       4,
       0,
       59,
-      19
-    ],
-    "eyes": [
-      18,
-      20,
-      45,
       27
     ],
-    "neck": [
-      20,
-      30,
-      43,
-      46
+    "body": [
+      18,
+      28,
+      63,
+      63
     ],
     "side": [
       0,
-      22,
+      28,
       17,
-      78
+      63
     ],
     "feet": [
-      18,
-      70,
-      55,
+      0,
+      64,
+      63,
       83
     ]
   },
@@ -82,7 +77,9 @@
     "sword": "Samurai Sword",
     "clownshoes": "Clown Shoes",
     "skateboard": "Skateboard",
-    "fish": "Fresh Catch"
+    "fish": "Fresh Catch",
+    "moto_helmet": "Moto Helmet",
+    "onesie": "Dino Onesie"
   },
   "layers": [
     "base",
@@ -104,7 +101,9 @@
     "sword",
     "clownshoes",
     "skateboard",
-    "fish"
+    "fish",
+    "moto_helmet",
+    "onesie"
   ],
   "note": "Transparent full-canvas PNG layers. Drop art into highres/ and lowres/ using these names to reskin; keep the transparency and the registration. No code change needed."
 }
