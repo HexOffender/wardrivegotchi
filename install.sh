@@ -34,6 +34,17 @@ if ls "$SRC"/payload/images/*.png >/dev/null 2>&1; then
 fi
 chmod +x "$DEST/payload.sh"
 
+# Avatar art. The Pager reads avatar_assets/lowres/ for the owl and worn items;
+# without it the avatar just shows the placeholder. (The phone page has the art
+# embedded, so it needs nothing here.)
+if [ -d "$SRC/payload/avatar_assets" ]; then
+    mkdir -p "$DEST/avatar_assets/lowres"
+    cp "$SRC/payload/avatar_assets/manifest.json" "$DEST/avatar_assets/" 2>/dev/null || true
+    if ls "$SRC"/payload/avatar_assets/lowres/*.png >/dev/null 2>&1; then
+        cp "$SRC"/payload/avatar_assets/lowres/*.png "$DEST/avatar_assets/lowres/"
+    fi
+fi
+
 # The page of the GPS server. The binary file is a build product. This
 # repository does not contain it. Refer to the README.
 cp "$SRC/gps-server/index.html" "$DEST/mobile2gps/"
