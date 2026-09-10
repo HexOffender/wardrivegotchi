@@ -11,7 +11,7 @@ ifeq ($(strip $(PYTHON)),)
 PYTHON := python3
 endif
 
-.PHONY: help lowres avatar templates build
+.PHONY: help lowres avatar templates build deploy
 
 help:
 	@echo "targets:"
@@ -20,6 +20,8 @@ help:
 	@echo "  make avatar     make lowres, then embed the highres art into the phone page"
 	@echo "  make templates  regenerate the drawing templates in avatar_assets/templates/"
 	@echo "  make build      build the GPS-server binary (delegates to gps-server/)"
+	@echo "  make deploy     push the payload to the Pager over SSH (HOST=root@172.16.52.1)"
+	@echo "  make deploy ARGS=--binary   also push the built GPS-server binary"
 
 # Draw once at the highres size; this makes the Pager's lowres copies.
 lowres:
@@ -34,3 +36,8 @@ templates:
 
 build:
 	$(MAKE) -C gps-server build
+
+# Push the working tree to the Pager. Override the address with HOST=..., and
+# add ARGS=--binary to also ship the GPS-server binary.
+deploy:
+	@sh deploy.sh $(ARGS)
